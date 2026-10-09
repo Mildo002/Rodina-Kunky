@@ -11,6 +11,9 @@ Spoločný prehľad celej domácnosti pre všetkých členov rodiny – na mobil
 - **Rýchle správy** – „Potrebujem pomoc“, „Odvoz / taxi“, „Do školy“, „Zo školy“, „Nakúpiť“ alebo vlastná správa,
   s časom a miestom. Ostatní kliknú „Vybavím to“ / „Vybavené“; každá nová správa aj zmena stavu príde
   hneď ako upozornenie všetkým ostatným členom.
+- **Pripomienky** – rýchly zápis pripomienok, poznámok, receptov a nápadov, aj hlasom (diktovanie).
+- **Prepojenie s Claude** – po pridaní konektora stačí Claudovi povedať „pripomeň mi…“ alebo „ulož recept…“
+  a zapíše to do Rodiny (Rodina → Prepojenie s Claude).
 - **Nákupný zoznam** – spoločný, mení sa u všetkých naživo.
 - **Domácnosť** – zariadenia (záruka, servis), autá (STK, EK, známka, servis), poistenia
   (auto, osoby, životné, majetok) s ročným súčtom poistného.

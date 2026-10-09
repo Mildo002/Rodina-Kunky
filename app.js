@@ -91,6 +91,9 @@ const ICON = {
   msg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5v3a1.5 1.5 0 0 0 1.5 1.5H8l6 4V5L8 9H5.5A1.5 1.5 0 0 0 4 10.5z"/><path d="M17.5 9a4 4 0 0 1 0 6M8.5 15l1 4.5"/></svg>',
   help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="m5.6 5.6 3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg>',
   school: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 5l9 4.5-9 4.5z"/><path d="M7 11.5v4.5c1.5 1.5 3.2 2 5 2s3.5-.5 5-2v-4.5M21 9.5V15"/></svg>',
+  note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 3l6 6-3 1-3.5 3.5.5 4.5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 4.5.5L13 6z"/></svg>',
   face: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -434,8 +437,8 @@ function bindEvents(root, events) {
 
 /* ================= rozloženie ================= */
 const TABS = [
-  ["prehlad", "Domov", ICON.home], ["spravy", "Správy", ICON.msg], ["kalendar", "Kalendár", ICON.cal],
-  ["nakup", "Nákup", ICON.cart], ["zdravie", "Zdravie", ICON.heart],
+  ["prehlad", "Domov", ICON.home], ["spravy", "Správy", ICON.msg], ["pripomienky", "Pripomienky", ICON.note],
+  ["kalendar", "Kalendár", ICON.cal], ["nakup", "Nákup", ICON.cart],
 ];
 function layout(view, inner) {
   const h = S.households.find((x) => x.id === S.hid);
@@ -458,6 +461,7 @@ const loading = (view) => layout(view, '<p class="mut">Načítavam…</p>');
 /* Dlaždice úvodnej obrazovky – jedna pre každú sekciu */
 const TILES = [
   { k: "sprava", href: "#/spravy", icon: "msg", name: "Rýchle správy", empty: "Pomoc, odvoz, škola…" },
+  { k: "poznamka", href: "#/pripomienky", icon: "note", name: "Pripomienky", empty: "Poznámky, recepty, nápady" },
   { k: "pripomienka", href: "#/kalendar", icon: "cal", name: "Kalendár", empty: "Pripomienky a termíny" },
   { k: "nakupny", href: "#/nakup", icon: "cart", name: "Nákupný zoznam", empty: "Spoločný zoznam" },
   { k: "zdravie", href: "#/zdravie", icon: "heart", name: "Zdravie", empty: "Prehliadky a lekári" },
@@ -470,10 +474,11 @@ const TILES = [
 async function viewPrehlad() {
   loading("prehlad");
   const to = addDays(today(), 30);
-  let ev, shop, msgs;
+  let ev, shop, msgs, notes;
   try {
-    [ev, shop, msgs] = await Promise.all([loadEvents(null, to), sb.from("shopping_items").select("id", { count: "exact", head: true }).eq("household_id", S.hid).eq("checked", false),
-      sb.from("quick_messages").select("id", { count: "exact", head: true }).eq("household_id", S.hid).in("status", ["otvorena", "prevzata"])]);
+    [ev, shop, msgs, notes] = await Promise.all([loadEvents(null, to), sb.from("shopping_items").select("id", { count: "exact", head: true }).eq("household_id", S.hid).eq("checked", false),
+      sb.from("quick_messages").select("id", { count: "exact", head: true }).eq("household_id", S.hid).in("status", ["otvorena", "prevzata"]),
+      sb.from("notes").select("id", { count: "exact", head: true }).eq("household_id", S.hid)]);
   } catch (e) { return layout("prehlad", `<div class="err">${esc(errText(e))}</div>`); }
   const t = today();
   const late = ev.filter((e) => e.date < t);
@@ -481,6 +486,10 @@ async function viewPrehlad() {
   const status = (k) => {
     if (k === "nakupny") { const n = shop.count ?? 0; return { line: n ? `${n} ${plural(n, "položka", "položky", "položiek")} na kúpenie` : "Nič netreba kúpiť", badge: n || "" }; }
     if (k === "sprava") { const n = msgs.count ?? 0; return { line: n ? `${n} ${plural(n, "čaká", "čakajú", "čaká")} na vybavenie` : null, warn: n > 0, badge: n || "" }; }
+    if (k === "poznamka") {
+      const r = ev.filter((e) => e.k === "pripomienka" && e.date >= t).length, n = notes.count ?? 0;
+      return { line: [r ? `${r} ${plural(r, "pripomienka", "pripomienky", "pripomienok")}` : "", n ? `${n} ${plural(n, "poznámka", "poznámky", "poznámok")}` : ""].filter(Boolean).join(" · ") || null };
+    }
     if (k === "rodina") return { line: `${S.persons.length} ${plural(S.persons.length, "osoba", "osoby", "osôb")} v rodine`, badge: "" };
     const lateK = late.filter((e) => e.k === k).length;
     const next = soon.find((e) => e.k === k);
@@ -659,6 +668,140 @@ async function renderShopping() {
     if (error) toast(errText(error)); else { toast("Kúpené položky odstránené"); renderShopping(); }
   });
   shopFirst = false;
+}
+
+/* ================= PRIPOMIENKY A POZNÁMKY ================= */
+const NOTE_CAT = [["poznamka", "Poznámka"], ["recept", "Recept"], ["napad", "Nápad"], ["ine", "Iné"]];
+const NOTE_FILTERS = [["vsetko", "Všetko"], ["pripomienky", "Pripomienky"], ["poznamka", "Poznámky"], ["recept", "Recepty"], ["napad", "Nápady"]];
+const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+/** Diktovanie do textového poľa (slovenčina). Vráti funkciu na zastavenie. */
+function dictate(textarea, btn) {
+  const rec = new Speech(); rec.lang = "sk-SK"; rec.continuous = true; rec.interimResults = true;
+  const base = textarea.value ? textarea.value.replace(/\s*$/, " ") : "";
+  let finalText = "";
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + " "; else interim += e.results[i][0].transcript;
+    }
+    textarea.value = base + finalText + interim;
+  };
+  rec.onend = () => btn.classList.remove("on");
+  rec.onerror = (e) => { btn.classList.remove("on"); if (e.error === "not-allowed") toast("Povoľte mikrofón pre túto aplikáciu"); };
+  rec.start(); btn.classList.add("on");
+  return () => rec.stop();
+}
+let notesFilter = "vsetko", notesQuery = "";
+async function viewPripomienky() {
+  layout("pripomienky", `
+    <div class="head"><div><h1>Pripomienky</h1><p class="mut">Zapíšte si čokoľvek – aj hlasom. S dátumom príde upozornenie.</p></div></div>
+    <form class="card quickadd" id="qa" autocomplete="off">
+      <div class="qa-row"><textarea name="text" rows="3" placeholder="Napíšte alebo nadiktujte… (prvý riadok bude nadpis)"></textarea>
+        ${Speech ? `<button type="button" class="micbtn" id="mic" aria-label="Diktovať">${ICON.mic}</button>` : ""}</div>
+      ${Speech ? "" : `<p class="mut sm">Tip: na iPhone diktujte mikrofónom na klávesnici.</p>`}
+      <div class="chips" role="radiogroup" aria-label="Druh">${NOTE_CAT.slice(0, 3).map(([k, l], i) => `<label class="chip"><input type="radio" name="cat" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}
+        <label class="chip"><input type="checkbox" name="rem"><span>Pripomenúť</span></label></div>
+      <div class="grid2 hidden" id="remBox">
+        <label class="f">Dátum<input type="date" name="d" value="${today()}"></label>
+        <label class="f">Čas<input type="time" name="t"></label>
+        <label class="f">Upozorniť<select name="before">${REMIND.map(([v, l]) => `<option value="${v}" ${v === "120" ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      </div>
+      <button class="btn wide">Uložiť</button>
+    </form>
+    <div class="tabs" role="tablist" style="margin-top:16px">${NOTE_FILTERS.map(([k, l]) => `<button role="tab" aria-selected="${k === notesFilter}" data-f="${k}">${l}</button>`).join("")}</div>
+    <input type="search" id="nq" placeholder="Hľadať v poznámkach…" value="${esc(notesQuery)}" style="margin-bottom:14px">
+    <div id="notes"><p class="mut">Načítavam…</p></div>`);
+  const form = document.getElementById("qa");
+  let stop = null;
+  document.getElementById("mic")?.addEventListener("click", (e) => {
+    const b = e.currentTarget;
+    if (stop) { stop(); stop = null; return; }
+    try { stop = dictate(form.text, b); } catch { toast("Diktovanie tu nefunguje – použite mikrofón na klávesnici"); }
+  });
+  form.rem.addEventListener("change", () => document.getElementById("remBox").classList.toggle("hidden", !form.rem.checked));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault(); if (stop) { stop(); stop = null; }
+    const raw = form.text.value.trim();
+    if (!raw) return toast("Najprv niečo napíšte");
+    const lines = raw.split("\n"); let title = lines[0].trim(); let body = lines.slice(1).join("\n").trim();
+    if (title.length > 90) { body = raw; title = raw.slice(0, 60).replace(/\s+\S*$/, "") + "…"; }
+    const btn = form.querySelector(".btn"); btn.disabled = true;
+    let error;
+    if (form.rem.checked) {
+      if (!form.d.value) { btn.disabled = false; return toast("Zadajte dátum pripomienky"); }
+      ({ error } = await sb.from("reminders").insert({ household_id: S.hid, title, note: body || null, due_on: form.d.value, due_time: form.t.value || null, remind_before_minutes: Number(form.before.value) }));
+    } else {
+      ({ error } = await sb.from("notes").insert({ household_id: S.hid, title, body: body || null, category: form.cat.value }));
+    }
+    btn.disabled = false;
+    if (error) return toast(errText(error));
+    toast(form.rem.checked ? "Pripomienka uložená – príde upozornenie" : "Uložené");
+    form.reset(); document.getElementById("remBox").classList.add("hidden"); form.d.value = today();
+    renderNotes();
+  });
+  $app.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => {
+    notesFilter = b.dataset.f; $app.querySelectorAll("[data-f]").forEach((x) => x.setAttribute("aria-selected", x === b)); renderNotes();
+  }));
+  let tmr; document.getElementById("nq").addEventListener("input", (e) => { clearTimeout(tmr); tmr = setTimeout(() => { notesQuery = e.target.value.trim(); renderNotes(); }, 250); });
+  renderNotes();
+}
+async function renderNotes() {
+  const box = document.getElementById("notes"); if (!box) return;
+  const showRem = notesFilter === "vsetko" || notesFilter === "pripomienky";
+  const showNotes = notesFilter !== "pripomienky";
+  const q = notesQuery.toLowerCase();
+  const match = (...t) => !q || t.some((x) => (x || "").toLowerCase().includes(q));
+  const [rem, nts] = await Promise.all([
+    showRem ? sb.from("reminders").select("*").eq("household_id", S.hid).eq("done", false).order("due_on").order("due_time", { nullsFirst: true }).limit(100) : { data: [] },
+    showNotes ? (notesFilter === "vsetko" ? sb.from("notes").select("*").eq("household_id", S.hid) : sb.from("notes").select("*").eq("household_id", S.hid).eq("category", notesFilter))
+      .order("pinned", { ascending: false }).order("updated_at", { ascending: false }).limit(200) : { data: [] },
+  ]);
+  const err = rem.error || nts.error;
+  if (err) { box.innerHTML = `<div class="err">${esc(errText(err))}</div>`; return; }
+  const reminders = (rem.data || []).filter((r) => match(r.title, r.note));
+  const list = (nts.data || []).filter((n) => match(n.title, n.body));
+  const remHtml = reminders.map((r) => `<div class="row"><span class="tag k-pripomienka"></span>
+      <button class="check" data-rdone="${r.id}" aria-label="Hotovo"></button>
+      <button class="main" data-redit="${r.id}" style="background:none;border:0;text-align:left;padding:0;cursor:pointer"><b>${esc(r.title)}</b>
+      <span>${esc([fmt(r.due_on), fmtTime(r.due_time), r.note].filter(Boolean).join(" · ").slice(0, 140))}</span></button>${pill(r.due_on, 2)}</div>`).join("");
+  const noteHtml = list.map((n) => `<button class="note-card-item" data-nid="${n.id}">
+      <span class="ncat">${n.pinned ? `<i class="pin">${ICON.pin}</i>` : ""}${esc(NOTE_CAT.find((c) => c[0] === n.category)?.[1] || "")}${n.private ? " · súkromné" : ""}</span>
+      <b>${esc(n.title)}</b>${n.body ? `<span class="nbody">${esc(n.body)}</span>` : ""}
+      <span class="sm mut">${esc(memberName(n.created_by))} · ${new Date(n.updated_at).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric" })}</span></button>`).join("");
+  box.innerHTML = `
+    ${showRem ? `<section><h2 style="margin-bottom:10px">Naplánované pripomienky</h2>${reminders.length ? `<div class="list">${remHtml}</div>` : `<div class="card empty">${q ? "Nič sa nenašlo." : "Žiadna naplánovaná pripomienka. Zaškrtnite „Pripomenúť“ a zadajte dátum."}</div>`}</section>` : ""}
+    ${showNotes ? `<section><h2 style="margin-bottom:10px">${notesFilter === "recept" ? "Recepty" : notesFilter === "napad" ? "Nápady" : "Poznámky"}</h2>${list.length ? `<div class="notes-grid">${noteHtml}</div>` : `<div class="card empty">${q ? "Nič sa nenašlo." : "Zatiaľ prázdne. Zapíšte si recept, nápad alebo čokoľvek, čo nechcete zabudnúť."}</div>`}</section>` : ""}`;
+  box.querySelectorAll("[data-rdone]").forEach((b) => b.addEventListener("click", () => markDone("reminders", reminders.find((r) => r.id === b.dataset.rdone))));
+  box.querySelectorAll("[data-redit]").forEach((b) => b.addEventListener("click", () => editRecord(FORMS.reminder(), reminders.find((r) => r.id === b.dataset.redit))));
+  box.querySelectorAll("[data-nid]").forEach((b) => b.addEventListener("click", () => editNote(list.find((n) => n.id === b.dataset.nid))));
+}
+function editNote(n) {
+  const mine = n.created_by === S.user.id;
+  openSheet(NOTE_CAT.find((c) => c[0] === n.category)?.[1] || "Poznámka", `<form novalidate><div class="err hidden"></div>
+    <label class="f">Nadpis<input name="title" value="${esc(n.title)}" required></label>
+    <label class="f">Text<textarea name="body" rows="10">${esc(n.body || "")}</textarea></label>
+    <div class="grid2"><label class="f">Druh<select name="category">${NOTE_CAT.map(([k, l]) => `<option value="${k}" ${k === n.category ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <div><label class="radio"><input type="checkbox" name="pinned" ${n.pinned ? "checked" : ""}><span>Pripnúť hore</span></label>
+      ${mine ? `<label class="radio"><input type="checkbox" name="private" ${n.private ? "checked" : ""}><span>Súkromné<small>vidím iba ja</small></span></label>` : ""}</div></div>
+    <div class="actions"><button type="button" class="btn danger" data-del>Odstrániť</button>${navigator.share ? '<button type="button" class="btn ghost" data-share>Zdieľať</button>' : ""}<button class="btn">Uložiť</button></div></form>`, (el) => {
+    const form = el.querySelector("form"), err = el.querySelector(".err");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const title = form.title.value.trim(); if (!title) { err.textContent = "Zadajte nadpis."; return err.classList.remove("hidden"); }
+      const upd = { title, body: form.body.value.trim() || null, category: form.category.value, pinned: form.pinned.checked };
+      if (mine) upd.private = form.private.checked;
+      const { error } = await sb.from("notes").update(upd).eq("id", n.id);
+      if (error) { err.textContent = errText(error); return err.classList.remove("hidden"); }
+      closeSheet(); toast("Uložené"); renderNotes();
+    });
+    el.querySelector("[data-share]")?.addEventListener("click", () => navigator.share({ title: form.title.value, text: `${form.title.value}\n\n${form.body.value}` }).catch(() => {}));
+    el.querySelector("[data-del]").addEventListener("click", async () => {
+      if (!confirm("Odstrániť túto poznámku?")) return;
+      const { error } = await sb.from("notes").delete().eq("id", n.id);
+      if (error) { err.textContent = errText(error); return err.classList.remove("hidden"); }
+      closeSheet(); toast("Odstránené"); renderNotes();
+    });
+  });
 }
 
 /* ================= RÝCHLE SPRÁVY ================= */
@@ -984,6 +1127,45 @@ async function markSeen() {
   sb.rpc("mark_seen").then(() => {}, () => {});
 }
 
+/* ================= PREPOJENIE S CLAUDE (konektor MCP) ================= */
+const MCP_URL = `${SUPABASE_URL}/functions/v1/rodina-mcp/`;
+async function sha256hex(t) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
+async function claudeSettings(box) {
+  if (!box) return;
+  const { data } = await sb.from("api_tokens").select("id,name,created_at,last_used_at").eq("household_id", S.hid).order("created_at", { ascending: false });
+  const tokens = data || [];
+  box.innerHTML = `<b>Diktujte pripomienky Claudovi</b>
+    <p class="mut sm">Po prepojení stačí v aplikácii Claude povedať napr. „Pripomeň mi v piatok o 16:00 vyzdvihnúť Peťka“ alebo „ulož do Rodiny tento recept“ – Claude to zapíše sem.</p>
+    ${tokens.length ? `<div class="list" style="margin:10px 0">${tokens.map((t) => `<div class="row"><div class="main"><b>${esc(t.name)}</b><span>vytvorené ${new Date(t.created_at).toLocaleDateString("sk-SK")}${t.last_used_at ? ` · naposledy použité ${new Date(t.last_used_at).toLocaleString("sk-SK", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}` : " · zatiaľ nepoužité"}</span></div>
+      <button class="btn ghost sm" data-revoke="${t.id}">Zrušiť</button></div>`).join("")}</div>` : ""}
+    <button class="btn" id="mkTok">${tokens.length ? "Vytvoriť nové prepojenie" : "Prepojiť s Claude"}</button>`;
+  box.querySelector("#mkTok").onclick = async () => {
+    const tok = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const { error } = await sb.from("api_tokens").insert({ household_id: S.hid, name: "Claude", token_hash: await sha256hex(tok) });
+    if (error) return toast(errText(error));
+    const url = MCP_URL + tok;
+    openSheet("Prepojenie s Claude", `
+      <p class="note">Túto adresu uvidíte <b>iba teraz</b>. Je to kľúč k vašej rodine – neposielajte ju nikomu.</p>
+      <input readonly value="${esc(url)}" id="mcpUrl"><div class="actions" style="margin:10px 0 16px"><button class="btn" id="cpUrl">Kopírovať adresu</button></div>
+      <ol class="steps">
+        <li>Otvorte <b>claude.ai</b> v počítači (alebo aplikáciu Claude) → <b>Customize → Connectors</b> (Prispôsobiť → Konektory).</li>
+        <li>Kliknite <b>+ Add → Add custom connector</b>.</li>
+        <li>Názov: <b>Rodina</b>, URL: vložte skopírovanú adresu → <b>Continue</b>.</li>
+        <li>Pri overení zvoľte <b>No sign in</b> (bez prihlásenia) → <b>Add</b>.</li>
+        <li>V rozhovore s Claudom zapnite konektor <b>Rodina</b> (tlačidlo <b>+</b> → Connectors) a povedzte, čo treba zapísať.</li>
+      </ol>`, (el) => {
+      el.querySelector("#cpUrl").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Adresa skopírovaná"); } catch { el.querySelector("#mcpUrl").select(); } };
+    });
+    claudeSettings(box);
+  };
+  box.querySelectorAll("[data-revoke]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Zrušiť toto prepojenie? Claude potom do Rodiny nebude môcť zapisovať.")) return;
+    const { error } = await sb.from("api_tokens").delete().eq("id", b.dataset.revoke);
+    if (error) return toast(errText(error));
+    toast("Prepojenie zrušené"); claudeSettings(box);
+  }));
+}
+
 /* ================= RODINA (nastavenia) ================= */
 async function viewRodina() {
   loading("rodina");
@@ -1010,6 +1192,8 @@ async function viewRodina() {
     <section><div class="head"><div><h2>Osoby bez účtu</h2><p class="mut sm">Deti či starí rodičia – môžete im viesť prehliadky a poistenia.</p></div>${isAdmin() ? '<button class="btn sm" id="addP">Pridať osobu</button>' : ""}</div>
       ${noAccount.length ? `<div class="list">${noAccount.map((p) => `<button class="row" data-p="${p.id}" ${isAdmin() ? "" : "disabled"}><div class="main"><b>${esc(p.name)}</b><span>${p.birth_date ? `nar. ${fmt(p.birth_date)}` : ""}</span></div></button>`).join("")}</div>` : `<div class="card empty">Zatiaľ nikto.</div>`}
     </section>
+
+    <section><h2 style="margin-bottom:10px">Prepojenie s Claude</h2><div class="card" id="claudeBox"><span class="mut">Načítavam…</span></div></section>
 
     <section><h2 style="margin-bottom:10px">Zámok aplikácie</h2><div class="card" id="lockBox"></div></section>
 
@@ -1056,6 +1240,7 @@ start();
   document.getElementById("out").onclick = async () => { try { await disablePush(); } catch {} await sb.auth.signOut(); };
   renderPushCard(document.getElementById("push"));
   lockSettings(document.getElementById("lockBox"));
+  claudeSettings(document.getElementById("claudeBox"));
 }
 function promptSheet(title, value, save) {
   openSheet(title, `<form><div class="err hidden"></div><label class="f">${esc(title)}<input name="v" value="${esc(value)}" required></label><div class="actions"><button class="btn">Uložiť</button></div></form>`, (el) => {
@@ -1396,7 +1581,7 @@ async function loadContext() {
 /* ================= smerovanie ================= */
 const currentView = () => (location.hash.replace(/^#\/?/, "").split("/")[0] || "prehlad");
 const currentSub = () => location.hash.replace(/^#\/?/, "").split("/")[1] || "";
-const VIEWS = { spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
+const VIEWS = { pripomienky: viewPripomienky, spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
 function route() {
   if (!S.user || !S.hid || !S.unlocked) return;
   closeSheet();

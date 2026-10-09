@@ -226,3 +226,27 @@ img.mark{background:none;object-fit:contain}
 .msg.otvorena{background:color-mix(in srgb,var(--bad-soft) 45%,transparent)}
 .msg.vybavena,.msg.zrusena{opacity:.75}
 .mbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+/* ===== pripomienky a poznámky ===== */
+.k-poznamka{--k:#b7791f}
+.quickadd textarea{min-height:84px;resize:vertical}
+.qa-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
+.qa-row textarea{flex:1}
+.micbtn{width:52px;height:52px;border-radius:50%;border:0;background:var(--sun);color:#22204a;display:grid;place-items:center;cursor:pointer;flex:none}
+.micbtn svg{width:26px;height:26px}
+.micbtn.on{background:var(--bad);color:#fff}
+@media (prefers-reduced-motion:no-preference){.micbtn.on{animation:pulse 1.2s infinite}@keyframes pulse{50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--bad) 25%,transparent)}}}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.chip input{position:absolute;opacity:0;width:1px;height:1px}
+.chip span{display:inline-block;border:1.5px solid var(--line);border-radius:99px;padding:7px 14px;font-weight:600;cursor:pointer}
+.chip input:checked+span{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chip input:focus-visible+span{outline:3px solid var(--sun);outline-offset:2px}
+.notes-grid{display:grid;grid-template-columns:1fr;gap:10px}
+@media (min-width:640px){.notes-grid{grid-template-columns:1fr 1fr}}
+.note-card-item{display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--c-pripomienka);border-radius:14px;padding:12px 14px;cursor:pointer;color:var(--ink)}
+.note-card-item b{font-size:1.02rem}
+.ncat{font-size:.8rem;font-weight:700;color:var(--warn);display:flex;align-items:center;gap:4px}
+.ncat .pin svg{width:14px;height:14px}
+.nbody{white-space:pre-line;color:var(--ink);opacity:.85;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.steps{padding-left:20px;margin:0}
+.steps li{margin:6px 0}

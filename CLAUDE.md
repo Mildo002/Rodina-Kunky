@@ -33,6 +33,11 @@
 - Test funkcie z databázy cez `net.http_post` s hlavičkou `x-cron-secret` z `app_secrets`, `{"run":true,"dry":true,"date":"…"}`.
 - Rýchle správy (`quick_messages`): trigger `notify_quick_message` volá funkciu cez pg_net hneď pri vložení / zmene stavu
   (`{"msg":id,"actor":uid}`), upozornenie dostanú všetci členovia okrem autora zmeny.
+- Pripomienky: sekcia `#/pripomienky` – rýchly zápis (aj diktovanie), s dátumom ide do `reminders`, inak do `notes`
+  (recept / poznámka / nápad, súkromné vidí iba autor).
+- Konektor pre Claude: edge funkcia `rodina-mcp` (MCP cez HTTP, JSON-RPC, verify_jwt vypnuté). Kľúč v URL
+  `/functions/v1/rodina-mcp/<kľúč>`, v `api_tokens` iba SHA-256 odtlačok. Nástroje: pridat_pripomienku, pridat_poznamku,
+  pridat_na_nakup, poslat_rychlu_spravu, zoznam_terminov, hladat_poznamky (zdravotné údaje cez konektor nejdú).
 - Zámok aplikácie je iba na zariadení (localStorage): PBKDF2 odtlačok kódu + WebAuthn platform authenticator.
 - Logo: `tools/logo_foto.py` (fotka `tools/kuny-foto.png` v srdci) generuje `logo.png`, `favicon.png`, `ikona-*.png`.
 
