@@ -83,6 +83,7 @@ const ICON = {
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>',
   heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/><path d="M8 12h2l1-2 2 4 1-2h2"/></svg>',
   people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg>',
+  face: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg>',
@@ -93,6 +94,7 @@ const ICON = {
 const KIND_LABEL = { auto: "Poistenie auta", osoba: "Poistenie osôb", zivotne: "Životné poistenie", majetok: "Poistenie majetku", ine: "Iné poistenie" };
 const FREQ = [["mesacne", "mesačne"], ["stvrtrocne", "štvrťročne"], ["polrocne", "polročne"], ["rocne", "ročne"], ["jednorazovo", "jednorazovo"]];
 const REPEAT = [["", "Neopakovať"], ["1", "Každý mesiac"], ["3", "Každé 3 mesiace"], ["6", "Každého pol roka"], ["12", "Každý rok"], ["24", "Každé 2 roky"]];
+const WARRANTY = [["6", "6 mesiacov"], ["12", "12 mesiacov"], ["24", "24 mesiacov (zákonná)"], ["36", "3 roky"], ["48", "4 roky"], ["60", "5 rokov"], ["120", "10 rokov"]];
 const DEV_CAT = ["Spotrebič", "Elektronika", "Kúrenie a voda", "Záhrada", "Náradie", "Iné"].map((x) => [x, x]);
 
 const personOpts = (filter) => [["", "—"], ...S.persons.filter(filter || (() => true)).map((p) => [p.id, p.name])];
@@ -131,6 +133,17 @@ const FORMS = {
       { k: "premium", l: "Poistné (€)", t: "number", step: "0.01", half: true },
       { k: "frequency", l: "Platí sa", t: "select", opts: [["", "—"], ...FREQ], half: true },
       { k: "next_payment_on", l: "Najbližšia platba", t: "date", half: true }, { k: "valid_until", l: "Platí do", t: "date", half: true },
+      { k: "note", l: "Poznámka", t: "textarea" },
+    ],
+  }),
+  purchase: () => ({
+    table: "purchases", title: "Nákup so zárukou", fields: [
+      { k: "name", l: "Čo ste kúpili", req: true, ph: "napr. Robotický vysávač" },
+      { k: "store", l: "Obchod", half: true }, { k: "price", l: "Cena (€)", t: "number", step: "0.01", half: true },
+      { k: "purchased_on", l: "Dátum nákupu", t: "date", req: true, half: true },
+      { k: "warranty_months", l: "Záruka", t: "select", req: true, num: true, half: true, opts: WARRANTY },
+      { k: "serial_number", l: "Výrobné číslo", half: true },
+      { k: "person_id", l: "Komu patrí", t: "select", opts: personOpts(), half: true },
       { k: "note", l: "Poznámka", t: "textarea" },
     ],
   }),
@@ -188,7 +201,7 @@ function readForm(form, fields) {
   const fd = new FormData(form), o = {};
   for (const f of fields) {
     let v = fd.get(f.k); v = typeof v === "string" ? v.trim() : v;
-    o[f.k] = v === "" || v == null ? null : f.t === "number" || f.k === "repeat_months" ? Number(String(v).replace(",", ".")) : v;
+    o[f.k] = v === "" || v == null ? null : f.t === "number" || f.num || f.k === "repeat_months" ? Number(String(v).replace(",", ".")) : v;
   }
   return o;
 }
@@ -222,6 +235,10 @@ function editRecord(def, row = {}, after) {
     });
 }
 async function editById(type, id) {
+  if (type === "purchase") {
+    const { data } = await sb.from("purchases").select("*").eq("id", id).maybeSingle();
+    return data ? editPurchase(data) : toast("Záznam sa nenašiel");
+  }
   const def = type === "insurance" ? FORMS.insurance(await vehiclesList()) : FORMS[type]();
   const { data, error } = await sb.from(def.table).select("*").eq("id", id).maybeSingle();
   if (error || !data) return toast("Záznam sa nenašiel");
@@ -232,6 +249,92 @@ async function vehiclesList() {
   return data || [];
 }
 async function addInsurance() { editRecord(FORMS.insurance(await vehiclesList()), { kind: "auto" }); }
+
+/* ================= nákup so zárukou + bločky / faktúry ================= */
+const safeName = (n) => n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-80);
+/** Veľké fotky z mobilu zmenší (max. 2000 px), aby sa rýchlo nahrali. PDF a iné nechá tak. */
+async function shrink(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 1.5e6) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+    return blob ? new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
+  } catch { return file; }
+}
+async function uploadAttachments(purchaseId, files) {
+  for (const f0 of files) {
+    const f = await shrink(f0);
+    if (f.size > 10 * 1024 * 1024) throw new Error(`Súbor ${f0.name} je väčší ako 10 MB.`);
+    const path = `${S.hid}/nakupy/${purchaseId}/${Date.now()}-${safeName(f.name)}`;
+    const up = await sb.storage.from("prilohy").upload(path, f, { contentType: f.type || "application/octet-stream" });
+    if (up.error) throw up.error;
+    const { error } = await sb.from("attachments").insert({ household_id: S.hid, purchase_id: purchaseId, path, file_name: f0.name, mime: f.type, size_bytes: f.size });
+    if (error) throw error;
+  }
+}
+async function editPurchase(row = {}) {
+  const def = FORMS.purchase(), isNew = !row.id;
+  let atts = [], urls = [];
+  if (!isNew) {
+    const { data } = await sb.from("attachments").select("*").eq("purchase_id", row.id).order("created_at");
+    atts = data || [];
+    if (atts.length) urls = (await sb.storage.from("prilohy").createSignedUrls(atts.map((a) => a.path), 900)).data || [];
+  }
+  const attHtml = atts.map((a, i) => {
+    const u = urls[i]?.signedUrl || "";
+    const thumb = a.mime?.startsWith("image/") && u ? `<img src="${esc(u)}" alt="">` : `<span class="doc">${a.mime === "application/pdf" ? "PDF" : "súbor"}</span>`;
+    return `<div class="att"><a href="${esc(u)}" target="_blank" rel="noopener">${thumb}<span>${esc(a.file_name || "Príloha")}</span></a><button type="button" class="iconbtn" data-delatt="${a.id}" aria-label="Odstrániť ${esc(a.file_name || "prílohu")}">${ICON.x}</button></div>`;
+  }).join("");
+  const data = { purchased_on: today(), warranty_months: 24, ...row };
+  openSheet(isNew ? "Pridať nákup so zárukou" : "Nákup so zárukou", `<form novalidate><div class="err hidden"></div>
+    ${formHtml(def.fields, data)}
+    ${row.warranty_until ? `<p class="note">Záruka platí do <b>${fmt(row.warranty_until)}</b> (${daysTo(row.warranty_until) < 0 ? "už skončila" : relDays(row.warranty_until)}).</p>` : ""}
+    <div class="f">Bloček, faktúra, záručný list
+      ${atts.length ? `<div class="atts">${attHtml}</div>` : ""}
+      <label class="btn ghost wide filebtn">Odfotiť alebo vybrať súbor<input type="file" name="files" accept="image/*,application/pdf" multiple></label>
+      <div class="mut sm" id="picked">Fotka z mobilu alebo PDF, najviac 10 MB.</div>
+    </div>
+    <div class="actions">${isNew ? "" : '<button type="button" class="btn danger" data-del>Odstrániť</button>'}<button class="btn" data-save>${isNew ? "Pridať" : "Uložiť"}</button></div></form>`, (el) => {
+    const form = el.querySelector("form"), err = el.querySelector(".err"), fileIn = form.querySelector('[name="files"]');
+    const fail = (e) => { err.textContent = errText(e); err.classList.remove("hidden"); el.scrollTop = 0; };
+    fileIn.addEventListener("change", () => {
+      const n = fileIn.files.length;
+      el.querySelector("#picked").textContent = n ? `Vybraté: ${[...fileIn.files].map((f) => f.name).join(", ")}` : "";
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const missing = def.fields.filter((f) => f.req && !String(new FormData(form).get(f.k) || "").trim());
+      if (missing.length) return fail(`Vyplňte: ${missing.map((f) => f.l).join(", ")}.`);
+      const btn = form.querySelector("[data-save]"); btn.disabled = true; btn.textContent = "Ukladám…";
+      try {
+        const vals = readForm(form, def.fields);
+        const q = isNew ? sb.from("purchases").insert({ ...vals, household_id: S.hid }) : sb.from("purchases").update(vals).eq("id", row.id);
+        const { data: saved, error } = await q.select("id").single();
+        if (error) throw error;
+        if (fileIn.files.length) await uploadAttachments(saved.id, [...fileIn.files]);
+        closeSheet(); toast(isNew ? "Nákup pridaný" : "Uložené"); S.homeTab = "nakupy"; route();
+      } catch (er) { fail(er); btn.disabled = false; btn.textContent = isNew ? "Pridať" : "Uložiť"; }
+    });
+    el.querySelectorAll("[data-delatt]").forEach((b) => b.addEventListener("click", async () => {
+      const a = atts.find((x) => x.id === b.dataset.delatt);
+      if (!confirm(`Odstrániť prílohu ${a.file_name || ""}?`)) return;
+      await sb.storage.from("prilohy").remove([a.path]);
+      const { error } = await sb.from("attachments").delete().eq("id", a.id);
+      if (error) return fail(error);
+      toast("Príloha odstránená"); editPurchase(row);
+    }));
+    el.querySelector("[data-del]")?.addEventListener("click", async () => {
+      if (!confirm("Naozaj odstrániť tento nákup aj s prílohami?")) return;
+      if (atts.length) await sb.storage.from("prilohy").remove(atts.map((a) => a.path));
+      const { error } = await sb.from("purchases").delete().eq("id", row.id);
+      if (error) return fail(error);
+      closeSheet(); toast("Odstránené"); route();
+    });
+  });
+}
 
 /* Splnenie pripomienky / návštevy – pri opakovaní sa vytvorí ďalší termín */
 async function markDone(table, row) {
@@ -265,13 +368,14 @@ async function loadEvents(from, to) {
   const rq = sb.from("reminders").select("*").eq("household_id", h).eq("done", false).lte("due_on", to);
   const vq = sb.from("health_visits").select("*").eq("household_id", h).eq("done", false).lte("visit_on", to);
   if (from) { rq.gte("due_on", from); vq.gte("visit_on", from); }
-  const [r, v, veh, ins, dev] = await Promise.all([
+  const [r, v, veh, ins, dev, pur] = await Promise.all([
     rq, vq,
     sb.from("vehicles").select("id,name,stk_until,ek_until,vignette_until,next_service_on").eq("household_id", h),
     sb.from("insurances").select("id,name,kind,next_payment_on,valid_until,premium").eq("household_id", h),
     sb.from("devices").select("id,name,warranty_until,next_service_on").eq("household_id", h),
+    sb.from("purchases").select("id,name,store,warranty_until").eq("household_id", h),
   ]);
-  const err = [r, v, veh, ins, dev].find((x) => x.error);
+  const err = [r, v, veh, ins, dev, pur].find((x) => x.error);
   if (err) throw err.error;
   const ev = [];
   const inRange = (d) => d && d <= to && (!from || d >= from);
@@ -288,6 +392,9 @@ async function loadEvents(from, to) {
   for (const x of dev.data) {
     if (inRange(x.warranty_until)) ev.push({ date: x.warranty_until, title: `Končí záruka: ${x.name}`, sub: "Zariadenie", k: "zariadenie", type: "device", id: x.id });
     if (inRange(x.next_service_on)) ev.push({ date: x.next_service_on, title: `Servis: ${x.name}`, sub: "Zariadenie", k: "zariadenie", type: "device", id: x.id });
+  }
+  for (const x of pur.data) {
+    if (inRange(x.warranty_until)) ev.push({ date: x.warranty_until, title: `Končí záruka: ${x.name}`, sub: x.store || "Nákup", k: "nakup", type: "purchase", id: x.id });
   }
   ev.sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
   return ev;
@@ -325,7 +432,7 @@ function layout(view, inner) {
     : `<b>${esc(h?.name)}</b>`;
   $app.innerHTML = `
     <header class="top">
-      <div class="mark" aria-hidden="true">R</div>
+      <img class="mark" src="logo.png" alt="" width="40" height="40">
       <div class="who">${hh}<small>${esc(myName())}${isAdmin() ? " · správca" : ""}</small></div>
       <a class="iconbtn" href="#/rodina" aria-label="Rodina a nastavenia" ${view === "rodina" ? 'style="background:var(--sun);color:#22204a"' : ""}>${ICON.people}</a>
     </header>
@@ -364,6 +471,7 @@ async function viewPrehlad() {
       <a class="stat" href="#/kalendar"><b>${soon.length}</b><span>${plural(soon.length, "termín", "termíny", "termínov")} do 30 dní</span></a>
       <a class="stat" href="#/nakup"><b>${shop.count ?? 0}</b><span>na nákupnom zozname</span></a>
     </div>
+    <div id="pushAsk"></div>
     ${ev.length ? `<div class="agenda">${agenda}</div>` : `<div class="card empty"><b>Najbližších 30 dní je voľných</b>Pridajte pripomienku, auto s termínom STK alebo poistenie a termíny sa tu zobrazia samy.</div>`}
     <div class="row" style="padding:16px 0 0;border:0;gap:8px;flex-wrap:wrap">
       <button class="btn" id="addRem">Pridať pripomienku</button>
@@ -372,6 +480,17 @@ async function viewPrehlad() {
   bindEvents($app, ev);
   document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: today() });
   document.getElementById("addVis").onclick = () => newVisit();
+  askForPush();
+}
+async function askForPush() {
+  const box = document.getElementById("pushAsk");
+  if (!box || store.get("rodina_push_ask") === "nie") return;
+  const st = await pushState();
+  if (st !== "off" && !(st === "unsupported" && isIOS && !isStandalone())) return;
+  box.innerHTML = `<div class="card note-card"><b>Chcete, aby vám aplikácia pripomínala termíny?</b>
+    <p class="mut sm">Lekár deň vopred, platby poistenia, STK, koniec záruky…</p>
+    <div class="row" style="border:0;padding:0;gap:8px;flex-wrap:wrap"><a class="btn sm" href="#/rodina">Nastaviť upozornenia</a><button class="btn ghost sm" id="pLater">Teraz nie</button></div></div>`;
+  box.querySelector("#pLater").onclick = () => { store.set("rodina_push_ask", "nie"); box.innerHTML = ""; };
 }
 function newVisit(date) {
   const visible = S.persons.filter(canSeeHealth);
@@ -499,7 +618,7 @@ async function renderShopping() {
 /* ================= DOMÁCNOSŤ ================= */
 async function viewDomacnost() {
   const tab = S.homeTab;
-  const tabs = [["zariadenia", "Zariadenia"], ["auta", "Autá"], ["poistenia", "Poistenia"]];
+  const tabs = [["zariadenia", "Zariadenia"], ["nakupy", "Nákupy a záruky"], ["auta", "Autá"], ["poistenia", "Poistenia"]];
   const shell = (body, addLabel) => layout("domacnost", `
     <div class="head"><h1>Domácnosť</h1><button class="btn sm" id="add">${addLabel}</button></div>
     <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${k === tab}" data-tab="${k}">${l}</button>`).join("")}</div>
@@ -518,6 +637,25 @@ async function viewDomacnost() {
     bindTabs();
     $app.querySelectorAll("[data-id]").forEach((b) => b.addEventListener("click", () => editRecord(FORMS.device(), data.find((x) => x.id === b.dataset.id))));
     document.getElementById("add").onclick = () => editRecord(FORMS.device(), {});
+  } else if (tab === "nakupy") {
+    const { data, error } = await sb.from("purchases").select("*, attachments(count)").eq("household_id", S.hid);
+    if (error) return shell(`<div class="err">${esc(errText(error))}</div>`, "Pridať nákup");
+    const t = today();
+    const active = data.filter((x) => x.warranty_until >= t).sort((a, b) => a.warranty_until.localeCompare(b.warranty_until));
+    const gone = data.filter((x) => x.warranty_until < t).sort((a, b) => b.warranty_until.localeCompare(a.warranty_until));
+    const row = (x) => {
+      const n = daysTo(x.warranty_until), files = x.attachments?.[0]?.count || 0;
+      const p = n < 0 ? `<span class="pill plain">záruka skončila</span>` : `<span class="pill ${n <= 30 ? "warn" : "ok"}">záruka do ${fmt(x.warranty_until)}</span>`;
+      return `<button class="row" data-id="${x.id}"><span class="tag k-nakup"></span><div class="main"><b>${esc(x.name)}</b><span>${esc([x.store, `kúpené ${fmt(x.purchased_on)}`, files ? `${files} ${plural(files, "príloha", "prílohy", "príloh")}` : "bez bločku"].filter(Boolean).join(" · "))}</span></div>${p}</button>`;
+    };
+    shell(data.length ? `
+      <p class="mut sm" style="margin:-4px 0 12px">Uložte si bloček alebo faktúru. Aplikácia vám 30 dní pred koncom záruky pripomenie, že ešte môžete reklamovať.</p>
+      ${active.length ? `<div class="list">${active.map(row).join("")}</div>` : ""}
+      ${gone.length ? `<section><h3 style="margin-bottom:8px">Po záruke</h3><div class="list">${gone.map(row).join("")}</div></section>` : ""}`
+      : `<div class="card empty"><b>Zatiaľ žiadne nákupy</b>Pridajte tovar so zárukou, odfoťte bloček alebo faktúru a aplikácia bude strážiť koniec záruky.</div>`, "Pridať nákup");
+    bindTabs();
+    $app.querySelectorAll("[data-id]").forEach((b) => b.addEventListener("click", () => editPurchase(data.find((x) => x.id === b.dataset.id))));
+    document.getElementById("add").onclick = () => editPurchase({});
   } else if (tab === "auta") {
     const { data, error } = await sb.from("vehicles").select("*").eq("household_id", S.hid).order("name");
     if (error) return shell(`<div class="err">${esc(errText(error))}</div>`, "Pridať auto");
@@ -617,6 +755,78 @@ function editVisibility(p) {
   });
 }
 
+/* ================= UPOZORNENIA (web push) ================= */
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+function b64ToU8(s) { const p = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
+function deviceName() {
+  const u = navigator.userAgent;
+  const os = /android/i.test(u) ? "Android" : isIOS ? "iPhone/iPad" : /windows/i.test(u) ? "Windows" : /mac/i.test(u) ? "Mac" : "zariadenie";
+  const br = /edg\//i.test(u) ? "Edge" : /firefox/i.test(u) ? "Firefox" : /chrome/i.test(u) ? "Chrome" : /safari/i.test(u) ? "Safari" : "prehliadač";
+  return `${br} · ${os}`;
+}
+async function pushState() {
+  if (!pushSupported()) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = await reg?.pushManager.getSubscription();
+  return sub && Notification.permission === "granted" ? "on" : "off";
+}
+async function enablePush() {
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Upozornenia ste v prehliadači nepovolili.");
+  const reg = await navigator.serviceWorker.register("sw.js");
+  await navigator.serviceWorker.ready;
+  let key = (await sb.from("app_config").select("value").eq("key", "vapid_public").maybeSingle()).data?.value;
+  if (!key) key = (await sb.functions.invoke("upozornenia", { body: { vapid: true } })).data?.publicKey;
+  if (!key) throw new Error("Server upozornení neodpovedá. Skúste to neskôr.");
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) }));
+  const j = sub.toJSON();
+  const { error } = await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
+  if (error) throw error;
+}
+async function disablePush() {
+  if (!pushSupported()) return;
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = await reg?.pushManager.getSubscription();
+  if (sub) { await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+}
+const PUSH_RULES = `<ul class="rules">
+  <li><b>Lekár</b> – jeden pracovný deň vopred</li>
+  <li><b>Platba poistenia</b> – 20. deň v mesiaci pred splatnosťou</li>
+  <li><b>Pripomienky</b> – v deň termínu</li>
+  <li><b>STK, EK, diaľničná známka, servis auta</b> – 30 a 7 dní vopred</li>
+  <li><b>Koniec záruky a poistenia</b> – 30 dní vopred</li>
+</ul><p class="mut sm">Upozornenia chodia každé ráno o 7:00 na všetky zariadenia, kde ich zapnete.</p>`;
+async function renderPushCard(box) {
+  if (!box) return;
+  const st = await pushState();
+  const set = (html) => { box.innerHTML = html; };
+  if (st === "unsupported") {
+    return set(isIOS && !isStandalone()
+      ? `<b>Na iPhone najprv pridajte aplikáciu na plochu</b><p class="mut">V Safari klepnite na <b>Zdieľať</b> → <b>Pridať na plochu</b>. Potom otvorte Rodinu z plochy a tu zapnite upozornenia.</p>`
+      : `<b>Tento prehliadač upozornenia nepodporuje</b><p class="mut">Skúste Chrome, Edge alebo Firefox.</p>`);
+  }
+  if (st === "denied") return set(`<b>Upozornenia sú v prehliadači zablokované</b><p class="mut">Kliknite na ikonu zámku vľavo v adresnom riadku → Upozornenia → Povoliť. Potom obnovte stránku.</p>`);
+  if (st === "off") {
+    set(`<b>Upozornenia sú na tomto zariadení vypnuté</b>${PUSH_RULES}<button class="btn wide" id="pOn">Zapnúť upozornenia</button>`);
+    box.querySelector("#pOn").onclick = async (e) => {
+      e.target.disabled = true; e.target.textContent = "Zapínam…";
+      try { await enablePush(); toast("Upozornenia zapnuté"); } catch (er) { toast(errText(er)); }
+      renderPushCard(box);
+    };
+    return;
+  }
+  set(`<b>Upozornenia sú zapnuté na tomto zariadení</b>${PUSH_RULES}
+    <div class="row" style="border:0;padding:6px 0 0;gap:8px;flex-wrap:wrap"><button class="btn" id="pTest">Poslať skúšobné upozornenie</button><button class="btn ghost" id="pOff">Vypnúť</button></div>`);
+  box.querySelector("#pTest").onclick = async () => {
+    const { data, error } = await sb.functions.invoke("upozornenia", { body: { test: true } });
+    toast(error ? errText(error) : data?.sent ? "Odoslané – o chvíľu príde" : "Nepodarilo sa doručiť, skúste vypnúť a znova zapnúť");
+  };
+  box.querySelector("#pOff").onclick = async () => { await disablePush(); toast("Upozornenia vypnuté"); renderPushCard(box); };
+}
+
 /* ================= RODINA (nastavenia) ================= */
 async function viewRodina() {
   loading("rodina");
@@ -643,6 +853,10 @@ async function viewRodina() {
     <section><div class="head"><div><h2>Osoby bez účtu</h2><p class="mut sm">Deti či starí rodičia – môžete im viesť prehliadky a poistenia.</p></div>${isAdmin() ? '<button class="btn sm" id="addP">Pridať osobu</button>' : ""}</div>
       ${noAccount.length ? `<div class="list">${noAccount.map((p) => `<button class="row" data-p="${p.id}" ${isAdmin() ? "" : "disabled"}><div class="main"><b>${esc(p.name)}</b><span>${p.birth_date ? `nar. ${fmt(p.birth_date)}` : ""}</span></div></button>`).join("")}</div>` : `<div class="card empty">Zatiaľ nikto.</div>`}
     </section>
+
+    <section><h2 style="margin-bottom:10px">Zámok aplikácie</h2><div class="card" id="lockBox"></div></section>
+
+    <section><h2 style="margin-bottom:10px">Upozornenia</h2><div class="card" id="push"><span class="mut">Načítavam…</span></div></section>
 
     <section><h2 style="margin-bottom:10px">Môj účet</h2>
       <div class="list">
@@ -679,9 +893,12 @@ async function viewRodina() {
     if (!confirm(`Naozaj opustiť rodinu „${h.name}“? Stratíte prístup k jej údajom.`)) return;
     const { error } = await sb.from("members").delete().eq("household_id", S.hid).eq("user_id", S.user.id);
     if (error) return toast(errText(error));
-    store.set("rodina_hid", null); start();
+    store.set("rodina_hid", null); if (pushSupported()) navigator.serviceWorker.register("sw.js").catch(() => {});
+start();
   };
-  document.getElementById("out").onclick = async () => { await sb.auth.signOut(); };
+  document.getElementById("out").onclick = async () => { try { await disablePush(); } catch {} await sb.auth.signOut(); };
+  renderPushCard(document.getElementById("push"));
+  lockSettings(document.getElementById("lockBox"));
 }
 function promptSheet(title, value, save) {
   openSheet(title, `<form><div class="err hidden"></div><label class="f">${esc(title)}<input name="v" value="${esc(value)}" required></label><div class="actions"><button class="btn">Uložiť</button></div></form>`, (el) => {
@@ -754,10 +971,147 @@ function createHouseholdSheet() {
   });
 }
 
+/* ================= ZÁMOK APLIKÁCIE (Face ID / odtlačok / 4-miestny kód) =================
+   Zámok je na každom zariadení zvlášť. Kód sa ukladá iba ako odtlačok (PBKDF2), Face ID rieši priamo zariadenie. */
+const LOCK_AFTER_MS = 60 * 1000;            // po minúte v pozadí sa aplikácia zamkne
+const MAX_PIN_TRIES = 5;
+const lockKey = () => `rodina_lock_${S.user.id}`;
+const getLock = () => { try { return JSON.parse(store.get(lockKey()) || "null"); } catch { return null; } };
+const setLock = (v) => store.set(lockKey(), v ? JSON.stringify(v) : null);
+const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const fromB64 = (x) => Uint8Array.from(atob(x), (c) => c.charCodeAt(0));
+async function hashPin(pin, salt) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  return toB64(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: fromB64(salt), iterations: 150000, hash: "SHA-256" }, key, 256));
+}
+async function bioAvailable() {
+  try { return !!window.PublicKeyCredential && (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch { return false; }
+}
+const bioLabel = () => {
+  const u = navigator.userAgent;
+  return isIOS ? "Face ID" : /android/i.test(u) ? "odtlačok prsta" : /windows/i.test(u) ? "Windows Hello" : /mac/i.test(u) ? "Touch ID" : "biometriu";
+};
+async function bioEnroll() {
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: "Rodina", id: location.hostname },
+    user: { id: new TextEncoder().encode(S.user.id).slice(0, 64), name: S.user.email, displayName: myName() || S.user.email },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+    timeout: 60000, attestation: "none",
+  } });
+  return toB64(cred.rawId);
+}
+async function bioVerify(credId) {
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: location.hostname, timeout: 60000,
+    allowCredentials: [{ type: "public-key", id: fromB64(credId), transports: ["internal"] }], userVerification: "required",
+  } });
+  return !!a && (new Uint8Array(a.response.authenticatorData)[32] & 0x04) !== 0; // príznak „používateľ overený“
+}
+function pinPad(title, sub, { bio, onBio, links = "" } = {}) {
+  authShell(`<div class="lock"><h2>${esc(title)}</h2><p class="mut" id="lsub">${esc(sub)}</p>
+    <div class="dots4" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="err hidden" id="lerr"></div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-k="${n}">${n}</button>`).join("")}
+      ${bio ? `<button type="button" class="bio" id="bioBtn" aria-label="Odomknúť cez ${esc(bioLabel())}">${ICON.face}</button>` : "<span></span>"}
+      <button type="button" data-k="0">0</button><button type="button" data-k="del" aria-label="Zmazať">⌫</button></div>
+    ${links}</div>`);
+  if (bio) document.getElementById("bioBtn").onclick = onBio;
+}
+function readPin(onFull) {
+  let pin = "";
+  const dots = () => document.querySelectorAll(".dots4 i").forEach((d, i) => d.classList.toggle("on", i < pin.length));
+  const press = (k) => {
+    if (k === "del") pin = pin.slice(0, -1); else if (pin.length < 4 && /^\d$/.test(k)) pin += k;
+    dots();
+    if (pin.length === 4) { const p = pin; pin = ""; setTimeout(() => { dots(); onFull(p); }, 120); }
+  };
+  document.querySelectorAll("[data-k]").forEach((b) => b.addEventListener("click", () => press(b.dataset.k)));
+  const kb = (e) => { if (!document.querySelector(".dots4")) return document.removeEventListener("keydown", kb); if (/^\d$/.test(e.key)) press(e.key); if (e.key === "Backspace") press("del"); };
+  document.addEventListener("keydown", kb);
+}
+const lockErr = (m) => { const e = document.getElementById("lerr"); e.textContent = m; e.classList.remove("hidden"); document.querySelector(".dots4")?.classList.add("shake"); setTimeout(() => document.querySelector(".dots4")?.classList.remove("shake"), 400); };
+
+/** Prvé nastavenie zámku na tomto zariadení: kód (vždy, ako záloha) + Face ID, ak ho zariadenie má. */
+function setupLock() {
+  return new Promise((resolve) => {
+    pinPad("Zabezpečte aplikáciu", "Zvoľte 4-miestny kód na odomykanie na tomto zariadení.");
+    let first = null;
+    readPin(async (p) => {
+      if (!first) { first = p; document.getElementById("lsub").textContent = "Zadajte kód ešte raz pre kontrolu."; document.getElementById("lerr").classList.add("hidden"); return; }
+      if (p !== first) { first = null; document.getElementById("lsub").textContent = "Zvoľte 4-miestny kód."; return lockErr("Kódy sa nezhodujú, skúste znova."); }
+      const salt = toB64(crypto.getRandomValues(new Uint8Array(16)));
+      const lock = { salt, hash: await hashPin(p, salt), tries: 0 };
+      setLock(lock);
+      if (await bioAvailable()) {
+        authShell(`<div class="lock"><h2>Odomykať cez ${esc(bioLabel())}?</h2>
+          <p class="mut">Aplikácia sa otvorí rýchlo a bezpečne. Kód zostane ako záloha.</p>
+          <div class="err hidden" id="lerr"></div>
+          <button class="btn wide" id="bioYes">Zapnúť ${esc(bioLabel())}</button>
+          <div class="switch"><button class="linkbtn" id="bioNo">Stačí mi kód</button></div></div>`);
+        document.getElementById("bioNo").onclick = () => { S.unlocked = true; resolve(); };
+        document.getElementById("bioYes").onclick = async () => {
+          try { lock.cred = await bioEnroll(); setLock(lock); toast(`${bioLabel()} zapnuté`); S.unlocked = true; resolve(); }
+          catch (e) { const x = document.getElementById("lerr"); x.textContent = `${bioLabel()} sa nepodarilo zapnúť. Skúste znova alebo použite kód.`; x.classList.remove("hidden"); }
+        };
+      } else { S.unlocked = true; toast("Kód nastavený"); resolve(); }
+    });
+  });
+}
+/** Zamknutá obrazovka – Face ID alebo kód. */
+function lockScreen() {
+  return new Promise((resolve) => {
+    const lock = getLock();
+    const done = () => { lock.tries = 0; setLock(lock); S.unlocked = true; resolve(); };
+    const tryBio = async () => { try { if (await bioVerify(lock.cred)) done(); } catch { /* zrušené – zostáva kód */ } };
+    pinPad("Rodina je zamknutá", lock.cred ? `Odomknite cez ${bioLabel()} alebo zadajte kód.` : "Zadajte 4-miestny kód.", {
+      bio: !!lock.cred, onBio: tryBio,
+      links: `<div class="switch"><button class="linkbtn" id="forgot">Zabudol som kód – prihlásiť sa heslom</button></div>`,
+    });
+    document.getElementById("forgot").onclick = async () => { setLock(null); try { await disablePush(); } catch {} await sb.auth.signOut(); };
+    readPin(async (p) => {
+      if ((await hashPin(p, lock.salt)) === lock.hash) return done();
+      lock.tries = (lock.tries || 0) + 1; setLock(lock);
+      const left = MAX_PIN_TRIES - lock.tries;
+      if (left <= 0) { setLock(null); toast("Príliš veľa pokusov – prihláste sa heslom"); try { await disablePush(); } catch {} await sb.auth.signOut(); return; }
+      lockErr(`Nesprávny kód. ${left === 1 ? "Ostáva posledný pokus." : `Ostávajú ${left} pokusy.`}`);
+    });
+    if (lock.cred) tryBio();
+  });
+}
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (S.user && S.unlocked && getLock() && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_MS) {
+    S.unlocked = false; closeSheet(); await lockScreen(); route();
+  }
+});
+function lockSettings(box) {
+  if (!box) return;
+  const lock = getLock();
+  box.innerHTML = `<b>${lock?.cred ? `Odomykanie cez ${esc(bioLabel())} a kód` : "Odomykanie 4-miestnym kódom"}</b>
+    <p class="mut sm">Aplikácia sa zamkne pri otvorení a po minúte v pozadí. Nastavenie platí iba pre toto zariadenie.</p>
+    <div class="row" style="border:0;padding:0;gap:8px;flex-wrap:wrap">
+      <button class="btn ghost sm" id="lPin">Zmeniť kód</button>
+      <span id="lBioWrap"></span></div>`;
+  box.querySelector("#lPin").onclick = async () => { setLock(null); await setupLock(); route(); };
+  bioAvailable().then((ok) => {
+    if (!ok || !lock) return;
+    const w = box.querySelector("#lBioWrap");
+    w.innerHTML = lock.cred ? `<button class="btn ghost sm" id="lBio">Vypnúť ${esc(bioLabel())}</button>` : `<button class="btn sm" id="lBio">Zapnúť ${esc(bioLabel())}</button>`;
+    w.querySelector("#lBio").onclick = async () => {
+      if (lock.cred) { delete lock.cred; setLock(lock); toast(`${bioLabel()} vypnuté`); }
+      else { try { lock.cred = await bioEnroll(); setLock(lock); toast(`${bioLabel()} zapnuté`); } catch { toast(`${bioLabel()} sa nepodarilo zapnúť`); } }
+      lockSettings(box);
+    };
+  });
+}
+
 /* ================= prihlásenie ================= */
 function authShell(inner) {
   $app.innerHTML = `<div class="auth"><div class="box">
-    <div class="logo"><div class="mark" aria-hidden="true">R</div><div><h1>Rodina</h1><div class="mut sm">Spoločný prehľad celej domácnosti</div></div></div>
+    <div class="logo"><img class="mark" src="logo.png" alt="" width="64" height="64"><div><h1>Rodina</h1><div class="mut sm">Spoločný prehľad celej domácnosti</div></div></div>
     ${inner}</div></div>`;
 }
 async function viewAuth(mode = "login") {
@@ -804,6 +1158,7 @@ async function viewAuth(mode = "login") {
     if (mode === "signup" && !v.name.trim()) return fail("Zadajte svoje meno.");
     try {
       if (mode === "login") {
+        S.unlocked = true; // práve zadal heslo – netreba hneď aj kód
         const { error } = await sb.auth.signInWithPassword({ email: v.email, password: v.password }); if (error) throw error;
       } else if (mode === "signup") {
         const { data, error } = await sb.auth.signUp({ email: v.email, password: v.password, options: { data: { full_name: v.name.trim() }, emailRedirectTo: redirect } });
@@ -884,7 +1239,7 @@ async function loadContext() {
 const currentView = () => (location.hash.replace(/^#\/?/, "").split("/")[0] || "prehlad");
 const VIEWS = { prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
 function route() {
-  if (!S.user || !S.hid) return;
+  if (!S.user || !S.hid || !S.unlocked) return;
   closeSheet();
   const v = currentView();
   (VIEWS[v] || viewPrehlad)();
@@ -905,9 +1260,11 @@ async function start() {
     const { data: { session } } = await sb.auth.getSession();
     S.session = session; S.user = session?.user || null;
     if (S.recovery && S.user) return viewAuth("newpass");
-    if (!S.user) { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } return viewAuth(store.get("rodina_invite") && !AUTH_LINK_ERROR ? "signup" : "login"); }
+    if (!S.user) { S.unlocked = false; if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } return viewAuth(store.get("rodina_invite") && !AUTH_LINK_ERROR ? "signup" : "login"); }
     const { data: prof } = await sb.from("profiles").select("*").eq("id", S.user.id).maybeSingle();
     S.profile = prof || { full_name: S.user.user_metadata?.full_name || "" };
+    if (!getLock()) { starting = false; await setupLock(); starting = true; }
+    else if (!S.unlocked) { starting = false; await lockScreen(); starting = true; }
     const token = store.get("rodina_invite");
     if (token) { starting = false; await acceptInvite(token); starting = true; }
     await loadHouseholds();
