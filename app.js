@@ -1,6 +1,17 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { SUPABASE_URL, SUPABASE_KEY, APP_VERSION } from "./config.js";
 
+// Chyba z odkazu v e-maile (napr. už použitý potvrdzovací odkaz) – zachytiť skôr, než ju spracuje Supabase
+const AUTH_LINK_ERROR = (() => {
+  const hp = new URLSearchParams(location.hash.replace(/^#\/?/, "") || location.search.slice(1));
+  const code = hp.get("error_code") || hp.get("error");
+  if (!code) return null;
+  history.replaceState(null, "", location.pathname + "#/prehlad");
+  if (/otp_expired|access_denied/.test(code))
+    return "Odkaz z e-mailu už bol použitý alebo mu vypršala platnosť. Ak ste e-mail už potvrdili, stačí sa prihlásiť. Inak sa zaregistrujte znova a pošleme nový odkaz.";
+  return "Odkaz z e-mailu nefunguje: " + (hp.get("error_description") || code).replace(/\+/g, " ");
+})();
+
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $app = document.getElementById("app");
 const $sheet = document.getElementById("sheet-root");
@@ -777,7 +788,8 @@ async function viewAuth(mode = "login") {
       <label class="f">Nové heslo (aspoň 8 znakov)<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
       <button class="btn wide">Uložiť heslo</button>`,
   };
-  authShell(`${inviteNote}<form id="af" novalidate><div class="err hidden"></div><div class="note hidden" id="ok"></div>${forms[mode]}</form>`);
+  const linkNote = AUTH_LINK_ERROR && mode === "login" ? `<div class="note">${esc(AUTH_LINK_ERROR)}</div>` : "";
+  authShell(`${linkNote}${inviteNote}<form id="af" novalidate><div class="err hidden"></div><div class="note hidden" id="ok"></div>${forms[mode]}</form>`);
   const form = document.getElementById("af"), err = form.querySelector(".err"), ok = form.querySelector("#ok");
   form.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => viewAuth(b.dataset.mode)));
   form.querySelector("input")?.focus();
@@ -796,7 +808,7 @@ async function viewAuth(mode = "login") {
       } else if (mode === "signup") {
         const { data, error } = await sb.auth.signUp({ email: v.email, password: v.password, options: { data: { full_name: v.name.trim() }, emailRedirectTo: redirect } });
         if (error) throw error;
-        if (!data.session) { ok.innerHTML = `Takmer hotovo. Na <b>${esc(v.email)}</b> sme poslali e-mail – otvorte v ňom odkaz na potvrdenie a potom sa prihláste.`; ok.classList.remove("hidden"); btn.disabled = false; }
+        if (!data.session) { ok.innerHTML = `Takmer hotovo. Na <b>${esc(v.email)}</b> sme poslali e-mail. Otvorte v ňom odkaz na potvrdenie – aplikácia sa potom otvorí už prihlásená. Ak e-mail neprišiel, pozrite aj priečinok Spam.`; ok.classList.remove("hidden"); btn.disabled = false; }
       } else if (mode === "reset") {
         const { error } = await sb.auth.resetPasswordForEmail(v.email, { redirectTo: redirect }); if (error) throw error;
         ok.textContent = "Ak je e-mail zaregistrovaný, poslali sme naň odkaz na nové heslo."; ok.classList.remove("hidden"); btn.disabled = false;
@@ -893,7 +905,7 @@ async function start() {
     const { data: { session } } = await sb.auth.getSession();
     S.session = session; S.user = session?.user || null;
     if (S.recovery && S.user) return viewAuth("newpass");
-    if (!S.user) { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } return viewAuth(store.get("rodina_invite") ? "signup" : "login"); }
+    if (!S.user) { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } return viewAuth(store.get("rodina_invite") && !AUTH_LINK_ERROR ? "signup" : "login"); }
     const { data: prof } = await sb.from("profiles").select("*").eq("id", S.user.id).maybeSingle();
     S.profile = prof || { full_name: S.user.user_metadata?.full_name || "" };
     const token = store.get("rodina_invite");

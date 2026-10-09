@@ -25,7 +25,7 @@ Bezpečnosť stojí na pravidlách v databáze (Row Level Security) – každá 
 
 1. **Vercel**: Add New → Project → repozitár `Rodina-Kunky` → Deploy (žiadne nastavenia netreba).
 2. **Supabase** → projekt `rodina` → Authentication → URL Configuration:
-   - Site URL: adresa z Vercelu (napr. `https://rodina-kunky.vercel.app`)
+   - Site URL: adresa z Vercelu (`https://kunky.vercel.app`)
    - Redirect URLs: tá istá adresa
 3. Supabase posiela potvrdzovacie e-maily iba v obmedzenom počte za hodinu. Pre ostrú prevádzku
    treba vlastný SMTP (napr. Resend) – Authentication → Emails → SMTP Settings.
