@@ -99,6 +99,8 @@ const ICON = {
 const KIND_LABEL = { auto: "Poistenie auta", osoba: "Poistenie osôb", zivotne: "Životné poistenie", majetok: "Poistenie majetku", ine: "Iné poistenie" };
 const FREQ = [["mesacne", "mesačne"], ["stvrtrocne", "štvrťročne"], ["polrocne", "polročne"], ["rocne", "ročne"], ["jednorazovo", "jednorazovo"]];
 const REPEAT = [["", "Neopakovať"], ["1", "Každý mesiac"], ["3", "Každé 3 mesiace"], ["6", "Každého pol roka"], ["12", "Každý rok"], ["24", "Každé 2 roky"]];
+const REMIND = [["0", "V čase udalosti"], ["15", "15 minút vopred"], ["30", "30 minút vopred"], ["60", "1 hodinu vopred"], ["120", "2 hodiny vopred"], ["180", "3 hodiny vopred"], ["1440", "1 deň vopred"], ["2880", "2 dni vopred"], ["10080", "1 týždeň vopred"]];
+const VIGNETTE = [["", "—"], ["rocna", "Ročná"], ["30dni", "30-dňová"], ["10dni", "10-dňová"], ["1den", "24-hodinová"]];
 const WARRANTY = [["6", "6 mesiacov"], ["12", "12 mesiacov"], ["24", "24 mesiacov (zákonná)"], ["36", "3 roky"], ["48", "4 roky"], ["60", "5 rokov"], ["120", "10 rokov"]];
 const DEV_CAT = ["Spotrebič", "Elektronika", "Kúrenie a voda", "Záhrada", "Náradie", "Iné"].map((x) => [x, x]);
 
@@ -124,7 +126,8 @@ const FORMS = {
       { k: "make", l: "Značka", half: true }, { k: "model", l: "Model", half: true },
       { k: "vin", l: "VIN" },
       { k: "stk_until", l: "STK platí do", t: "date", half: true }, { k: "ek_until", l: "EK platí do", t: "date", half: true },
-      { k: "vignette_until", l: "Diaľničná známka do", t: "date", half: true }, { k: "next_service_on", l: "Najbližší servis", t: "date", half: true },
+      { k: "vignette_kind", l: "Diaľničná známka", t: "select", opts: VIGNETTE, half: true }, { k: "vignette_until", l: "Známka platí do", t: "date", half: true },
+      { k: "vignette_until_time", l: "Známka platí do (čas)", t: "time", half: true }, { k: "next_service_on", l: "Najbližší servis", t: "date", half: true },
       { k: "note", l: "Poznámka", t: "textarea" },
     ],
   }),
@@ -156,6 +159,7 @@ const FORMS = {
     table: "reminders", title: "Pripomienka", fields: [
       { k: "title", l: "Čo treba urobiť", req: true, ph: "napr. Zaplatiť daň z nehnuteľnosti" },
       { k: "due_on", l: "Dátum", t: "date", req: true, half: true }, { k: "due_time", l: "Čas", t: "time", half: true },
+      { k: "remind_before_minutes", l: "Upozorniť", t: "select", num: true, opts: REMIND, half: true },
       { k: "repeat_months", l: "Opakovanie", t: "select", opts: REPEAT, half: true },
       { k: "person_id", l: "Pre koho", t: "select", opts: personOpts(), half: true },
       { k: "note", l: "Poznámka", t: "textarea" },
@@ -508,7 +512,7 @@ async function viewPrehlad() {
       </div>
     </section>`);
   bindEvents($app, ev);
-  document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: today() });
+  document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: today(), remind_before_minutes: 120 });
   document.getElementById("addVis").onclick = () => newVisit();
   askForPush();
 }
@@ -518,7 +522,7 @@ async function askForPush() {
   const st = await pushState();
   if (st !== "off" && !(st === "unsupported" && isIOS && !isStandalone())) return;
   box.innerHTML = `<div class="card note-card"><b>Chcete, aby vám aplikácia pripomínala termíny?</b>
-    <p class="mut sm">Lekár deň vopred, platby poistenia, STK, koniec záruky…</p>
+    <p class="mut sm">Pripomienky v čase, ktorý si nastavíte, lekár deň vopred, platby poistenia, STK, známka…</p>
     <div class="row" style="border:0;padding:0;gap:8px;flex-wrap:wrap"><a class="btn sm" href="#/rodina">Nastaviť upozornenia</a><button class="btn ghost sm" id="pLater">Teraz nie</button></div></div>`;
   box.querySelector("#pLater").onclick = () => { store.set("rodina_push_ask", "nie"); box.innerHTML = ""; };
 }
@@ -575,7 +579,7 @@ async function viewKalendar() {
   document.getElementById("prev").onclick = () => { S.calMonth = new Date(m.getFullYear(), m.getMonth() - 1, 1); viewKalendar(); };
   document.getElementById("next").onclick = () => { S.calMonth = new Date(m.getFullYear(), m.getMonth() + 1, 1); viewKalendar(); };
   document.getElementById("tdy").onclick = () => { S.calMonth = null; S.calSel = today(); viewKalendar(); };
-  document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: S.calSel });
+  document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: S.calSel, remind_before_minutes: 120 });
   document.getElementById("addVis").onclick = () => newVisit(S.calSel);
 }
 
@@ -825,10 +829,12 @@ async function disablePush() {
 const PUSH_RULES = `<ul class="rules">
   <li><b>Lekár</b> – jeden pracovný deň vopred</li>
   <li><b>Platba poistenia</b> – 20. deň v mesiaci pred splatnosťou</li>
-  <li><b>Pripomienky</b> – v deň termínu</li>
-  <li><b>STK, EK, diaľničná známka, servis auta</b> – 30 a 7 dní vopred</li>
-  <li><b>Koniec záruky a poistenia</b> – 30 dní vopred</li>
-</ul><p class="mut sm">Upozornenia chodia každé ráno o 7:00 na všetky zariadenia, kde ich zapnete.</p>`;
+  <li><b>Pripomienky</b> – v čase, ktorý si pri pripomienke nastavíte (napr. 2 hodiny vopred)</li>
+  <li><b>STK a emisná kontrola</b> – 10 dní vopred</li>
+  <li><b>Diaľničná známka</b> – ročná 7 dní vopred, kratšia 24 hodín pred koncom, 24-hodinová pri skončení platnosti</li>
+  <li><b>Koniec poistenia</b> – 3 mesiace vopred</li>
+  <li><b>Koniec záruky</b> – 30 dní vopred, <b>servis</b> – 7 dní vopred</li>
+</ul><p class="mut sm">Pripomienky a známky chodia v presnom čase, ostatné upozornenia ráno o 7:00 – na všetky zariadenia, kde ich zapnete.</p>`;
 async function renderPushCard(box) {
   if (!box) return;
   const st = await pushState();
