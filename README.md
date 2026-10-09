@@ -8,11 +8,20 @@ Spoločný prehľad celej domácnosti pre všetkých členov rodiny – na mobil
   Deti či starí rodičia môžu byť v rodine aj bez vlastného účtu.
 - **Prehľad** – všetko, čo vás čaká v najbližších 30 dňoch, a čo je po termíne.
 - **Kalendár** – pripomienky, návštevy lekára, STK a EK, diaľničné známky, platby a koniec poistení, záruky a servisy zariadení.
+- **Rýchle správy** – „Potrebujem pomoc“, „Odvoz / taxi“, „Do školy“, „Zo školy“, „Nakúpiť“ alebo vlastná správa,
+  s časom a miestom. Ostatní kliknú „Vybavím to“ / „Vybavené“; každá nová správa aj zmena stavu príde
+  hneď ako upozornenie všetkým ostatným členom.
 - **Nákupný zoznam** – spoločný, mení sa u všetkých naživo.
 - **Domácnosť** – zariadenia (záruka, servis), autá (STK, EK, známka, servis), poistenia
   (auto, osoby, životné, majetok) s ročným súčtom poistného.
 - **Zdravie** – prehliadky a návštevy lekára každej osoby. Každý si sám nastaví, kto jeho záznamy vidí:
   iba ja / ja a správcovia / všetci / vybraní členovia.
+- **Nákupy a záruky** – tovar so zárukou, dátum nákupu, fotka alebo sken bločka či faktúry, stráženie konca záruky.
+- **Upozornenia** do mobilu aj počítača: pripomienky v nastavenom čase (napr. 2 hodiny vopred), lekár jeden
+  pracovný deň vopred, platba poistenia 20. deň v mesiaci pred splatnosťou, koniec poistenia 3 mesiace vopred,
+  STK a EK 10 dní vopred, diaľničná známka ročná 7 dní / kratšia 24 hodín / 24-hodinová pri konci platnosti,
+  koniec záruky 30 dní vopred. Denné pravidlá chodia o 7:00. Na iPhone treba aplikáciu najprv pridať na plochu.
+- **Zámok aplikácie** – Face ID / odtlačok / Windows Hello, inak 4-miestny kód (na každom zariadení zvlášť).
 - Opakované pripomienky a prehliadky – po označení „hotovo“ sa sám vytvorí ďalší termín.
 - Viac rodín v jednej aplikácii (napr. rodičia, chalupa) a príprava na predplatné.
 
@@ -32,5 +41,5 @@ Bezpečnosť stojí na pravidlách v databáze (Row Level Security) – každá 
 
 ## Čo príde neskôr
 
-Logo, upozornenia e-mailom a notifikácie v mobile, prílohy (zmluvy, technické preukazy, správy od lekára),
+Upozornenia e-mailom, prílohy aj k zmluvám, technickým preukazom a správam od lekára,
 offline režim, predplatné.
