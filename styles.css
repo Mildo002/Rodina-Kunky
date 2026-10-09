@@ -193,3 +193,18 @@ img.mark{background:none;object-fit:contain}
 .keypad button:active{background:var(--sun-soft)}
 .keypad button.bio{background:var(--sun);border-color:var(--sun);color:#22204a;display:grid;place-items:center}
 .keypad button.bio svg{width:34px;height:34px}
+
+/* ===== dlaždice úvodnej obrazovky ===== */
+.k-nakupny{--k:#2e7d4f} .k-rodina{--k:#2b2860}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:8px}
+@media (min-width:640px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{position:relative;display:flex;flex-direction:column;gap:4px;min-height:128px;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:18px;text-decoration:none;color:var(--ink)}
+.tile:hover{border-color:var(--k)}
+.tile b{font:700 1.02rem/1.2 "Bricolage Grotesque",sans-serif;margin-top:auto}
+.tline{font-size:.86rem;color:var(--mut);line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tline.warn{color:var(--warn);font-weight:600} .tline.bad{color:var(--bad);font-weight:700}
+.ticon{position:relative;width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:#fff;background:var(--k);margin-bottom:8px}
+.ticon svg{width:24px;height:24px}
+.badge{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--ink);color:var(--paper);font:700 .75rem/20px "Source Sans 3",sans-serif;font-style:normal;text-align:center}
+.badge.bad{background:var(--bad);color:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .k-rodina{--k:#6f6bc4}}
