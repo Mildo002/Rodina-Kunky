@@ -5,6 +5,7 @@
 //   {"run":true}  + x-cron-secret   → beží každých 5 minút: pripomienky v nastavenom čase,
 //                  denné pravidlá iba o 7:00 slovenského času
 //                  voliteľne "date":"RRRR-MM-DD", "now":"ISO čas", "dry":true (iba výpis), "force":true
+//   {"msg":id}    + x-cron-secret   → rýchla správa (nová / zmena stavu) – hneď všetkým členom okrem autora zmeny
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
@@ -235,6 +236,46 @@ async function vignetteItems(nowIso: string): Promise<Item[]> {
   return out;
 }
 
+/* ---------- rýchle správy ---------- */
+const MSG_KIND: Record<string, string> = {
+  pomoc: "Potrebujem pomoc", odvoz: "Potrebujem odvoz / taxi", do_skoly: "Odviesť do školy",
+  zo_skoly: "Vyzdvihnúť zo školy", nakup: "Treba nakúpiť", ine: "Správa",
+};
+function whenText(ts: string | null) {
+  if (!ts) return "";
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Bratislava", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date(ts)).map((x) => [x.type, x.value]));
+  const d = `${p.year}-${p.month}-${p.day}`, local = localNow().date;
+  const day = d === local ? "dnes" : d === addDays(local, 1) ? "zajtra" : fmt(d);
+  return `${day} o ${p.hour}:${p.minute}`;
+}
+async function quickMessage(id: string, actor: string | null) {
+  const { data: m } = await db.from("quick_messages").select("*").eq("id", id).single();
+  if (!m) return { sent: 0 };
+  const { data: mem } = await db.from("members").select("user_id").eq("household_id", m.household_id);
+  const ids = (mem || []).map((x) => x.user_id as string);
+  const { data: profs } = await db.from("profiles").select("id,full_name,email").in("id", ids);
+  const name = (u: string | null) => { const p = (profs || []).find((x) => x.id === u); return (p?.full_name || p?.email || "Niekto").split(" ")[0]; };
+  const what = m.kind === "ine" ? (m.text || "Správa") : MSG_KIND[m.kind];
+  const detail = [m.kind !== "ine" ? m.text : "", whenText(m.when_at), m.place].filter(Boolean).join(" · ");
+  const T: Record<string, string> = {
+    otvorena: `${name(m.created_by)}: ${what}`,
+    prevzata: `${name(m.handled_by)} to vybaví: ${what}`,
+    vybavena: `Vybavené: ${what}`,
+    zrusena: `Zrušené: ${what}`,
+  };
+  const B: Record<string, string> = {
+    otvorena: detail || "Ťuknite a dajte vedieť, či to vybavíte.",
+    prevzata: [`Žiadal(a) ${name(m.created_by)}`, detail].filter(Boolean).join(" · "),
+    vybavena: [`Vybavil(a) ${name(m.handled_by || actor)}`, detail].filter(Boolean).join(" · "),
+    zrusena: [`Zrušil(a) ${name(actor || m.created_by)}`, detail].filter(Boolean).join(" · "),
+  };
+  await vapidKeys();
+  let sent = 0;
+  for (const u of ids) if (u !== actor) sent += await pushToUser(u, { title: T[m.status], body: B[m.status], url: "/#/spravy", tag: `sprava-${m.id}` });
+  return { sent };
+}
+
 async function run(today: string, dry: boolean, daily: boolean, nowIso: string) {
   const items = [...(daily ? await itemsFor(today, dry) : []), ...(await reminderItems(nowIso)), ...(await vignetteItems(nowIso))];
   if (dry) return { date: today, items: items.map((i) => ({ title: i.title, body: i.body, recipients: i.users.length, key: i.key })) };
@@ -261,6 +302,12 @@ Deno.serve(async (req) => {
       await vapidKeys();
       const n = await pushToUser(user.id, { title: "Upozornenia fungujú", body: "Takto vám aplikácia Rodina pripomenie termíny.", url: "/#/prehlad", tag: "test" });
       return json({ sent: n });
+    }
+
+    if (body.msg) {
+      const { data } = await db.from("app_secrets").select("value").eq("key", "cron").single();
+      if (!data || req.headers.get("x-cron-secret") !== data.value) return json({ error: "Neoprávnený prístup" }, 401);
+      return json(await quickMessage(body.msg, body.actor || null));
     }
 
     if (body.run) {

@@ -31,6 +31,8 @@
   denné pravidlá iba o 7:00 Europe/Bratislava (duplicity stráži `notification_log`). Pravidlá a sviatky SR sú v funkcii.
 - Kľúče web push (VAPID) a tajomstvo cronu sú v tabuľke `app_secrets` (RLS bez pravidiel – iba server). Verejný kľúč v `app_config`.
 - Test funkcie z databázy cez `net.http_post` s hlavičkou `x-cron-secret` z `app_secrets`, `{"run":true,"dry":true,"date":"…"}`.
+- Rýchle správy (`quick_messages`): trigger `notify_quick_message` volá funkciu cez pg_net hneď pri vložení / zmene stavu
+  (`{"msg":id,"actor":uid}`), upozornenie dostanú všetci členovia okrem autora zmeny.
 - Zámok aplikácie je iba na zariadení (localStorage): PBKDF2 odtlačok kódu + WebAuthn platform authenticator.
 - Logo: `tools/logo_foto.py` (fotka `tools/kuny-foto.png` v srdci) generuje `logo.png`, `favicon.png`, `ikona-*.png`.
 
