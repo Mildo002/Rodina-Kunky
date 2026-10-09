@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { SUPABASE_URL, SUPABASE_KEY, APP_VERSION } from "./config.js";
+import { SUPABASE_URL, SUPABASE_KEY, APP_VERSION, PUBLIC_URL } from "./config.js";
 
 // Chyba z odkazu v e-maile (napr. už použitý potvrdzovací odkaz) – zachytiť skôr, než ju spracuje Supabase
 const AUTH_LINK_ERROR = (() => {
@@ -1077,7 +1077,8 @@ function memberSheet(m) {
     });
   });
 }
-const inviteUrl = (token) => `${location.origin}${location.pathname}#/pozvanka/${token}`;
+// Pozvánka vždy na verejnú adresu – testovacie adresy Vercelu sú chránené prihlásením do Vercelu
+const inviteUrl = (token) => `${PUBLIC_URL}/#/pozvanka/${token}`;
 function inviteSheet() {
   openSheet("Pozvať člena", `<form><div class="err hidden"></div>
     <label class="f">Pre koho je pozvánka<input name="note" placeholder="napr. Mama, Peter" required></label>
