@@ -703,7 +703,7 @@ async function viewKurenie() {
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
   const back = q.get("daikin");
   if (back) {
-    toast({ ok: "Daikin je prepojený", zrusene: "Prepojenie zrušené", vyprsalo: "Prepojenie vypršalo – skúste znova", chyba: "Prepojenie s Daikin zlyhalo" }[back] || "");
+    toast({ ok: "Daikin je prepojený", zrusene: "Prepojenie zrušené", vyprsalo: "Prepojenie vypršalo – skúste znova", chyba: "Prepojenie s Daikin zlyhalo" + (q.get("dovod") ? ` (${q.get("dovod")})` : "") }[back] || "");
     history.replaceState(null, "", location.pathname + "#/kurenie");
   }
   layout("kurenie", `<div class="head"><h1>Kúrenie / chladenie</h1></div><div id="heat"><p class="mut">Načítavam údaje z Daikin…</p></div>`);

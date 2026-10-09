@@ -36,14 +36,31 @@ async function context(req: Request, body: any) {
 }
 
 /* ---------- tokeny a volania Daikin ---------- */
+// Daikin IDP: skúsi parametre v tele (štandard), potom v adrese (príklad z dokumentácie Daikin), potom Basic hlavičku.
 async function tokenRequest(params: Record<string, string>) {
-  const res = await fetch(`${IDP}/token`, {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ ...params, client_id: CLIENT_ID, client_secret: CLIENT_SECRET }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new UserError(`Daikin prihlásenie zlyhalo (${data.error || res.status})`);
-  return data as { access_token: string; refresh_token?: string; expires_in?: number };
+  const all = new URLSearchParams({ ...params, client_id: CLIENT_ID, client_secret: CLIENT_SECRET });
+  const form = { "Content-Type": "application/x-www-form-urlencoded" };
+  const attempts: [string, RequestInit][] = [
+    ["telo", { method: "POST", headers: form, body: all }],
+    ["adresa", { method: "POST", headers: form, url: `${IDP}/token?${all}` } as any],
+    ["basic", { method: "POST", headers: { ...form, Authorization: "Basic " + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`) }, body: new URLSearchParams(params) }],
+  ];
+  let last = "";
+  for (const [how, init] of attempts) {
+    const res = await fetch((init as any).url || `${IDP}/token`, init);
+    const text = await res.text();
+    let data: any = {}; try { data = JSON.parse(text); } catch { /* nie JSON */ }
+    if (res.ok && data.access_token) {
+      if (how !== "telo") console.log("Daikin token OK spôsobom", how);
+      return data as { access_token: string; refresh_token?: string; expires_in?: number };
+    }
+    last = data.error || String(res.status);
+    console.error("Daikin token", how, params.grant_type, res.status, data.error || "", data.error_description || text.slice(0, 300));
+    // ďalší spôsob má zmysel iba pri chybe overenia klienta / formátu požiadavky
+    if (!/invalid_client|invalid_request|unauthorized_client/.test(last) && ![400, 401, 405, 415].includes(res.status)) break;
+    if (last === "invalid_grant") break;
+  }
+  throw new UserError(`Daikin prihlásenie zlyhalo (${last})`);
 }
 async function accessToken(acc: any, force = false) {
   if (!force && acc.access_token && acc.expires_at && new Date(acc.expires_at).getTime() > Date.now() + 60000) return acc.access_token;
@@ -177,18 +194,25 @@ async function start(hid: string, user: string) {
 async function callback(u: URL) {
   const back = (q: string) => new Response(null, { status: 302, headers: { Location: `${APP}/#/kurenie?${q}` } });
   const code = u.searchParams.get("code"), state = u.searchParams.get("state");
+  if (u.searchParams.get("error")) console.error("Daikin authorize", u.searchParams.get("error"), u.searchParams.get("error_description"));
   if (!code || !state) return back("daikin=zrusene");
   const { data: st } = await db.from("daikin_oauth_states").select("*").eq("state", state).maybeSingle();
   if (!st || Date.now() - new Date(st.created_at).getTime() > 15 * 60000) return back("daikin=vyprsalo");
   await db.from("daikin_oauth_states").delete().eq("state", state);
   try {
     const t = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: REDIRECT });
-    await db.from("daikin_accounts").upsert({
-      household_id: st.household_id, connected_by: st.user_id, refresh_token: t.refresh_token, access_token: t.access_token,
+    if (!t.refresh_token) console.error("Daikin token: chýba refresh_token");
+    const { error } = await db.from("daikin_accounts").upsert({
+      household_id: st.household_id, connected_by: st.user_id, refresh_token: t.refresh_token || null, access_token: t.access_token,
       expires_at: new Date(Date.now() + (t.expires_in || 3600) * 1000).toISOString(), devices_cache: null, cache_at: null, blocked_until: null,
     });
-    return back("daikin=ok");
-  } catch { return back("daikin=chyba"); }
+    if (error) { console.error("Daikin uloženie", error.message); return back("daikin=chyba&dovod=db"); }
+    return back(t.refresh_token ? "daikin=ok" : "daikin=chyba&dovod=refresh");
+  } catch (e) {
+    console.error("Daikin callback", (e as Error).message);
+    const m = /\(([\w-]+)\)/.exec((e as Error).message);
+    return back("daikin=chyba&dovod=" + encodeURIComponent(m ? m[1] : "token"));
+  }
 }
 
 Deno.serve(async (req) => {
