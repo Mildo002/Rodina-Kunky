@@ -2,8 +2,9 @@
 // Režimy:
 //   GET / {"vapid":true}            → verejný kľúč pre prihlásenie na odber (vytvorí ho pri prvom volaní)
 //   {"test":true} + prihlásený      → skúšobné upozornenie na zariadenia prihláseného používateľa
-//   {"run":true}  + x-cron-secret   → denné upozornenia (pracuje iba o 7:00 slovenského času)
-//                  voliteľne "date":"RRRR-MM-DD", "dry":true (iba výpis), "force":true (ignoruje hodinu)
+//   {"run":true}  + x-cron-secret   → beží každých 5 minút: pripomienky v nastavenom čase,
+//                  denné pravidlá iba o 7:00 slovenského času
+//                  voliteľne "date":"RRRR-MM-DD", "now":"ISO čas", "dry":true (iba výpis), "force":true
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
@@ -117,12 +118,11 @@ async function itemsFor(today: string, dry: boolean): Promise<Item[]> {
   const out: Item[] = [];
   const { data: hhs } = await db.from("households").select("id,name");
   for (const h of hhs || []) {
-    const [mem, per, vis, ins, rem, veh, dev, pur] = await Promise.all([
+    const [mem, per, vis, ins, veh, dev, pur] = await Promise.all([
       db.from("members").select("user_id,role").eq("household_id", h.id),
       db.from("persons").select("id,name,user_id,health_visibility,health_viewer_ids").eq("household_id", h.id),
       db.from("health_visits").select("*").eq("household_id", h.id).eq("done", false).gt("visit_on", today).lte("visit_on", addDays(today, 10)),
       db.from("insurances").select("*").eq("household_id", h.id),
-      db.from("reminders").select("*").eq("household_id", h.id).eq("done", false).eq("due_on", today),
       db.from("vehicles").select("*").eq("household_id", h.id),
       db.from("devices").select("*").eq("household_id", h.id),
       db.from("purchases").select("*").eq("household_id", h.id),
@@ -130,7 +130,6 @@ async function itemsFor(today: string, dry: boolean): Promise<Item[]> {
     const all = (mem.data || []).map((m) => m.user_id as string);
     const admins = new Set((mem.data || []).filter((m) => m.role === "spravca").map((m) => m.user_id as string));
     const persons = (per.data || []) as Person[];
-    const pname = (id: string | null) => persons.find((p) => p.id === id)?.name || "";
 
     // Lekár: vždy jeden pracovný deň vopred
     for (const v of vis.data || []) {
@@ -159,23 +158,18 @@ async function itemsFor(today: string, dry: boolean): Promise<Item[]> {
           body: [eur(x.premium), `splatné ${fmt(pay)}`, x.insurer].filter(Boolean).join(" · "), url: "/#/domacnost", tag: `platba-${x.id}`,
         });
       }
-      if (x.valid_until && daysBetween(today, x.valid_until) === 30) out.push({
-        users: all, key: `poistenie-koniec:${x.id}:${x.valid_until}`, title: `Poistenie končí o 30 dní`,
-        body: `${x.name} · platí do ${fmt(x.valid_until)}`, url: "/#/domacnost",
+      if (x.valid_until && addMonths(x.valid_until, -3) === today) out.push({
+        users: all, key: `poistenie-koniec:${x.id}:${x.valid_until}`, title: `Poistenie končí o 3 mesiace`,
+        body: `${x.name} · platí do ${fmt(x.valid_until)}${x.insurer ? ` · ${x.insurer}` : ""}`, url: "/#/domacnost/poistenia",
       });
     }
 
-    // Pripomienky: v deň termínu ráno
-    for (const r of rem.data || []) out.push({
-      users: all, key: `pripomienka:${r.id}:${r.due_on}`, title: r.title,
-      body: [r.due_time ? `dnes o ${String(r.due_time).slice(0, 5)}` : "dnes", pname(r.person_id), r.note].filter(Boolean).join(" · "), url: "/#/kalendar",
-    });
-
-    // Autá: 30 a 7 dní vopred
-    const VEH: [string, string][] = [["stk_until", "STK"], ["ek_until", "Emisná kontrola"], ["vignette_until", "Diaľničná známka"], ["next_service_on", "Servis"]];
-    for (const v of veh.data || []) for (const [k, l] of VEH) {
+    // Autá: STK a EK 10 dní vopred, ročná diaľničná známka 7 dní (kratšie známky rieši vignetteItems), servis 30 a 7 dní
+    const VEH: [string, string, number[]][] = [["stk_until", "STK", [10]], ["ek_until", "Emisná kontrola", [10]], ["vignette_until", "Diaľničná známka", [7]], ["next_service_on", "Servis", [30, 7]]];
+    for (const v of veh.data || []) for (const [k, l, when] of VEH) {
       const d = v[k]; if (!d) continue; const n = daysBetween(today, d);
-      if (n === 30 || n === 7) out.push({ users: all, key: `auto:${v.id}:${k}:${d}:${n}`, title: `${l} o ${n} dní: ${v.name}`, body: `do ${fmt(d)}${v.plate ? ` · ${v.plate}` : ""}`, url: "/#/domacnost" });
+      if (k === "vignette_until" && v.vignette_kind && v.vignette_kind !== "rocna") continue;
+      if (when.includes(n)) out.push({ users: all, key: `auto:${v.id}:${k}:${d}:${n}`, title: `${l} o ${n} dní: ${v.name}`, body: `do ${fmt(d)}${v.plate ? ` · ${v.plate}` : ""}`, url: "/#/domacnost/auta" });
     }
 
     // Zariadenia: koniec záruky 30 dní vopred, servis 7 dní vopred
@@ -192,8 +186,57 @@ async function itemsFor(today: string, dry: boolean): Promise<Item[]> {
   return out;
 }
 
-async function run(today: string, dry: boolean) {
-  const items = await itemsFor(today, dry);
+/* Pripomienky: v čase „X vopred“ podľa nastavenia (okno posledných 30 minút, aby sa nič nestratilo) */
+async function reminderItems(nowIso: string): Promise<Item[]> {
+  const to = new Date(nowIso), from = new Date(to.getTime() - 30 * 60000);
+  const { data, error } = await db.rpc("due_reminders", { p_from: from.toISOString(), p_to: to.toISOString() });
+  if (error) throw error;
+  const out: Item[] = [];
+  const cache: Record<string, { all: string[]; persons: { id: string; name: string }[] }> = {};
+  for (const r of data || []) {
+    if (!cache[r.household_id]) {
+      const [m, p] = await Promise.all([
+        db.from("members").select("user_id").eq("household_id", r.household_id),
+        db.from("persons").select("id,name").eq("household_id", r.household_id),
+      ]);
+      cache[r.household_id] = { all: (m.data || []).map((x) => x.user_id), persons: p.data || [] };
+    }
+    const c = cache[r.household_id];
+    const time = r.due_time ? String(r.due_time).slice(0, 5) : "";
+    const local = localNow().date;
+    const day = r.due_on === local ? "dnes" : r.due_on === addDays(local, 1) ? "zajtra" : fmt(r.due_on);
+    out.push({
+      users: c.all, key: `pripomienka:${r.id}:${r.due_on}:${r.due_time || ""}:${r.remind_before_minutes}`, title: r.title,
+      body: [time ? `${day} o ${time}` : day, c.persons.find((x) => x.id === r.person_id)?.name, r.note].filter(Boolean).join(" · "),
+      url: "/#/kalendar", tag: `pripomienka-${r.id}`,
+    });
+  }
+  return out;
+}
+
+/* Diaľničná známka kratšia ako rok: 24 hodín pred koncom; 24-hodinová: v momente konca platnosti */
+const VIGNETTE: Record<string, string> = { "30dni": "30-dňová", "10dni": "10-dňová", "1den": "24-hodinová" };
+async function vignetteItems(nowIso: string): Promise<Item[]> {
+  const to = new Date(nowIso), from = new Date(to.getTime() - 30 * 60000);
+  const { data, error } = await db.rpc("due_vignettes", { p_from: from.toISOString(), p_to: to.toISOString() });
+  if (error) throw error;
+  const out: Item[] = [];
+  for (const v of data || []) {
+    const { data: m } = await db.from("members").select("user_id").eq("household_id", v.household_id);
+    const time = v.vignette_until_time ? String(v.vignette_until_time).slice(0, 5) : "23:59";
+    const ended = v.vignette_kind === "1den";
+    out.push({
+      users: (m || []).map((x) => x.user_id), key: `znamka:${v.id}:${v.vignette_until}:${time}`,
+      title: ended ? `Diaľničnej známke práve skončila platnosť: ${v.name}` : `Diaľničná známka končí o 24 hodín: ${v.name}`,
+      body: [`${VIGNETTE[v.vignette_kind]} známka`, `platná do ${fmt(v.vignette_until)} ${time}`, v.plate].filter(Boolean).join(" · "),
+      url: "/#/domacnost/auta", tag: `znamka-${v.id}`,
+    });
+  }
+  return out;
+}
+
+async function run(today: string, dry: boolean, daily: boolean, nowIso: string) {
+  const items = [...(daily ? await itemsFor(today, dry) : []), ...(await reminderItems(nowIso)), ...(await vignetteItems(nowIso))];
   if (dry) return { date: today, items: items.map((i) => ({ title: i.title, body: i.body, recipients: i.users.length, key: i.key })) };
   await vapidKeys();
   let sent = 0;
@@ -224,8 +267,8 @@ Deno.serve(async (req) => {
       const { data } = await db.from("app_secrets").select("value").eq("key", "cron").single();
       if (!data || req.headers.get("x-cron-secret") !== data.value) return json({ error: "Neoprávnený prístup" }, 401);
       const now = localNow();
-      if (!body.force && !body.dry && now.hour !== 7) return json({ skipped: true, hour: now.hour });
-      return json(await run(body.date || now.date, !!body.dry));
+      const daily = !!(body.force || body.dry || body.date || now.hour === 7);
+      return json(await run(body.date || now.date, !!body.dry, daily, body.now || new Date().toISOString()));
     }
     return json({ error: "Neznáma požiadavka" }, 400);
   } catch (e) {

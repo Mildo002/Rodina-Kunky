@@ -27,7 +27,8 @@
 ## Upozornenia a zámok
 
 - Edge funkcia `supabase/functions/upozornenia` (verify_jwt vypnuté – vlastné overenie: cron tajomstvo / token používateľa).
-  pg_cron ju volá každú hodinu, pracuje iba o 7:00 Europe/Bratislava. Pravidlá a sviatky SR sú v funkcii.
+  pg_cron ju volá každých 5 minút: pripomienky (`due_reminders`) a krátke známky (`due_vignettes`) v presnom čase,
+  denné pravidlá iba o 7:00 Europe/Bratislava (duplicity stráži `notification_log`). Pravidlá a sviatky SR sú v funkcii.
 - Kľúče web push (VAPID) a tajomstvo cronu sú v tabuľke `app_secrets` (RLS bez pravidiel – iba server). Verejný kľúč v `app_config`.
 - Test funkcie z databázy cez `net.http_post` s hlavičkou `x-cron-secret` z `app_secrets`, `{"run":true,"dry":true,"date":"…"}`.
 - Zámok aplikácie je iba na zariadení (localStorage): PBKDF2 odtlačok kódu + WebAuthn platform authenticator.
