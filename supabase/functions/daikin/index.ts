@@ -5,8 +5,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const CLIENT_ID = Deno.env.get("DAIKIN_CLIENT_ID") || "";
-const CLIENT_SECRET = Deno.env.get("DAIKIN_CLIENT_SECRET") || "";
+// medzery / nové riadky pri skopírovaní údajov z portálu Daikin sa odstránia
+const RAW_ID = Deno.env.get("DAIKIN_CLIENT_ID") || "", RAW_SECRET = Deno.env.get("DAIKIN_CLIENT_SECRET") || "";
+const CLIENT_ID = RAW_ID.trim(), CLIENT_SECRET = RAW_SECRET.trim();
+if (RAW_ID !== CLIENT_ID || RAW_SECRET !== CLIENT_SECRET) console.log("Daikin: údaje aplikácie obsahovali medzery – orezané");
 const IDP = "https://idp.onecta.daikineurope.com/v1/oidc";
 const API = "https://api.onecta.daikineurope.com";
 const REDIRECT = "https://tiadykirohlgabalkxyn.supabase.co/functions/v1/daikin/callback";
