@@ -88,6 +88,9 @@ const ICON = {
   receipt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.3z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/></svg>',
   washer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M4.5 7.5h15"/><circle cx="12" cy="14" r="4"/><path d="M8 5.2h.01M11 5.2h.01"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>',
+  msg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5v3a1.5 1.5 0 0 0 1.5 1.5H8l6 4V5L8 9H5.5A1.5 1.5 0 0 0 4 10.5z"/><path d="M17.5 9a4 4 0 0 1 0 6M8.5 15l1 4.5"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="m5.6 5.6 3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg>',
+  school: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 5l9 4.5-9 4.5z"/><path d="M7 11.5v4.5c1.5 1.5 3.2 2 5 2s3.5-.5 5-2v-4.5M21 9.5V15"/></svg>',
   face: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -431,8 +434,8 @@ function bindEvents(root, events) {
 
 /* ================= rozloženie ================= */
 const TABS = [
-  ["prehlad", "Domov", ICON.home], ["kalendar", "Kalendár", ICON.cal], ["nakup", "Nákup", ICON.cart],
-  ["domacnost", "Domácnosť", ICON.box], ["zdravie", "Zdravie", ICON.heart],
+  ["prehlad", "Domov", ICON.home], ["spravy", "Správy", ICON.msg], ["kalendar", "Kalendár", ICON.cal],
+  ["nakup", "Nákup", ICON.cart], ["zdravie", "Zdravie", ICON.heart],
 ];
 function layout(view, inner) {
   const h = S.households.find((x) => x.id === S.hid);
@@ -454,6 +457,7 @@ const loading = (view) => layout(view, '<p class="mut">Načítavam…</p>');
 /* ================= PREHĽAD ================= */
 /* Dlaždice úvodnej obrazovky – jedna pre každú sekciu */
 const TILES = [
+  { k: "sprava", href: "#/spravy", icon: "msg", name: "Rýchle správy", empty: "Pomoc, odvoz, škola…" },
   { k: "pripomienka", href: "#/kalendar", icon: "cal", name: "Kalendár", empty: "Pripomienky a termíny" },
   { k: "nakupny", href: "#/nakup", icon: "cart", name: "Nákupný zoznam", empty: "Spoločný zoznam" },
   { k: "zdravie", href: "#/zdravie", icon: "heart", name: "Zdravie", empty: "Prehliadky a lekári" },
@@ -466,15 +470,17 @@ const TILES = [
 async function viewPrehlad() {
   loading("prehlad");
   const to = addDays(today(), 30);
-  let ev, shop;
+  let ev, shop, msgs;
   try {
-    [ev, shop] = await Promise.all([loadEvents(null, to), sb.from("shopping_items").select("id", { count: "exact", head: true }).eq("household_id", S.hid).eq("checked", false)]);
+    [ev, shop, msgs] = await Promise.all([loadEvents(null, to), sb.from("shopping_items").select("id", { count: "exact", head: true }).eq("household_id", S.hid).eq("checked", false),
+      sb.from("quick_messages").select("id", { count: "exact", head: true }).eq("household_id", S.hid).in("status", ["otvorena", "prevzata"])]);
   } catch (e) { return layout("prehlad", `<div class="err">${esc(errText(e))}</div>`); }
   const t = today();
   const late = ev.filter((e) => e.date < t);
   const soon = ev.filter((e) => e.date >= t);
   const status = (k) => {
     if (k === "nakupny") { const n = shop.count ?? 0; return { line: n ? `${n} ${plural(n, "položka", "položky", "položiek")} na kúpenie` : "Nič netreba kúpiť", badge: n || "" }; }
+    if (k === "sprava") { const n = msgs.count ?? 0; return { line: n ? `${n} ${plural(n, "čaká", "čakajú", "čaká")} na vybavenie` : null, warn: n > 0, badge: n || "" }; }
     if (k === "rodina") return { line: `${S.persons.length} ${plural(S.persons.length, "osoba", "osoby", "osôb")} v rodine`, badge: "" };
     const lateK = late.filter((e) => e.k === k).length;
     const next = soon.find((e) => e.k === k);
@@ -591,6 +597,12 @@ function subscribeShopping() {
     .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items", filter: `household_id=eq.${S.hid}` }, () => {
       if (currentView() === "nakup") renderShopping();
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "quick_messages", filter: `household_id=eq.${S.hid}` }, (p) => {
+      const v = currentView();
+      if (v === "spravy") renderMessages();
+      else if (p.eventType === "INSERT" && p.new.created_by !== S.user.id) toast("Nová rýchla správa od " + memberName(p.new.created_by));
+      if (v === "prehlad" && S.unlocked && !$sheet.innerHTML) viewPrehlad();
+    })
     .subscribe((status) => {
       S.live = status === "SUBSCRIBED";
       document.querySelector(".live")?.classList.toggle("on", S.live);
@@ -647,6 +659,99 @@ async function renderShopping() {
     if (error) toast(errText(error)); else { toast("Kúpené položky odstránené"); renderShopping(); }
   });
   shopFirst = false;
+}
+
+/* ================= RÝCHLE SPRÁVY ================= */
+const MSG_KINDS = [
+  { k: "pomoc", label: "Potrebujem pomoc", icon: "help", ph: "S čím treba pomôcť?" },
+  { k: "odvoz", label: "Potrebujem odvoz / taxi", icon: "car", ph: "Odkiaľ a kam?" },
+  { k: "do_skoly", label: "Odviesť do školy", icon: "school", ph: "Koho? (napr. Peťka)" },
+  { k: "zo_skoly", label: "Vyzdvihnúť zo školy", icon: "school", ph: "Koho a odkiaľ?" },
+  { k: "nakup", label: "Treba nakúpiť", icon: "cart", ph: "Čo treba kúpiť?" },
+  { k: "ine", label: "Vlastná správa", icon: "msg", ph: "Napíšte správu pre rodinu" },
+];
+const MSG_STATUS = { otvorena: ["Čaká na vybavenie", "bad"], prevzata: ["Niekto to vybavuje", "warn"], vybavena: ["Vybavené", "ok"], zrusena: ["Zrušené", "plain"] };
+const memberName = (uid) => (S.members.find((m) => m.user_id === uid)?.full_name || "Niekto").split(" ")[0];
+function ago(ts) {
+  const min = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+  if (min < 1) return "práve teraz";
+  if (min < 60) return `pred ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `pred ${h} ${plural(h, "hodinou", "hodinami", "hodinami")}`;
+  return new Date(ts).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" });
+}
+const whenAt = (ts) => {
+  if (!ts) return "";
+  const d = new Date(ts), day = iso(d);
+  return `${day === today() ? "dnes" : day === addDays(today(), 1) ? "zajtra" : fmt(day)} o ${d.toLocaleTimeString("sk-SK", { hour: "2-digit", minute: "2-digit" })}`;
+};
+async function viewSpravy() {
+  layout("spravy", `
+    <div class="head"><div><h1>Rýchle správy</h1><p class="mut">Dajte vedieť celej rodine – každý dostane upozornenie.</p></div></div>
+    <div class="quick">${MSG_KINDS.map((x) => `<button class="qbtn k-q-${x.k}" data-kind="${x.k}"><span class="ticon">${ICON[x.icon]}</span>${esc(x.label)}</button>`).join("")}</div>
+    <div id="msgs"><p class="mut">Načítavam…</p></div>`);
+  $app.querySelectorAll("[data-kind]").forEach((b) => b.addEventListener("click", () => newMessage(b.dataset.kind)));
+  renderMessages();
+}
+function newMessage(kind) {
+  const kd = MSG_KINDS.find((x) => x.k === kind);
+  openSheet(kd.label, `<form novalidate><div class="err hidden"></div>
+    <label class="f">${kind === "ine" ? "Správa" : "Podrobnosti (nepovinné)"}<textarea name="text" placeholder="${esc(kd.ph)}" ${kind === "ine" ? "required" : ""}></textarea></label>
+    <div class="grid2"><label class="f">Kedy (nepovinné)<input type="date" name="d"></label><label class="f">Čas<input type="time" name="t"></label></div>
+    <label class="f">Kde (nepovinné)<input name="place" placeholder="napr. ZŠ Hlavná, zastávka…"></label>
+    <div class="actions"><button class="btn">Odoslať celej rodine</button></div></form>`, (el) => {
+    const form = el.querySelector("form"), err = el.querySelector(".err");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = form.text.value.trim();
+      if (kind === "ine" && !text) { err.textContent = "Napíšte správu."; return err.classList.remove("hidden"); }
+      const d = form.d.value || (form.t.value ? today() : "");
+      const when_at = d ? new Date(`${d}T${form.t.value || "00:00"}`).toISOString() : null;
+      const btn = form.querySelector(".btn"); btn.disabled = true;
+      const { error } = await sb.from("quick_messages").insert({ household_id: S.hid, kind, text: text || null, when_at, place: form.place.value.trim() || null });
+      btn.disabled = false;
+      if (error) { err.textContent = errText(error); return err.classList.remove("hidden"); }
+      closeSheet(); toast("Odoslané celej rodine"); if (currentView() === "spravy") renderMessages(); else location.hash = "#/spravy";
+    });
+  });
+}
+async function renderMessages() {
+  const box = document.getElementById("msgs"); if (!box) return;
+  const { data, error } = await sb.from("quick_messages").select("*").eq("household_id", S.hid).order("created_at", { ascending: false }).limit(40);
+  if (error) { box.innerHTML = `<div class="err">${esc(errText(error))}</div>`; return; }
+  const active = data.filter((m) => m.status === "otvorena" || m.status === "prevzata");
+  const old = data.filter((m) => !active.includes(m)).slice(0, 15);
+  const me = S.user.id;
+  const card = (m) => {
+    const kd = MSG_KINDS.find((x) => x.k === m.kind) || MSG_KINDS[5];
+    const [stLabel, stCls] = MSG_STATUS[m.status];
+    const title = m.kind === "ine" ? m.text : kd.label;
+    const detail = [m.kind !== "ine" ? m.text : "", whenAt(m.when_at), m.place].filter(Boolean).join(" · ");
+    const who = m.status === "prevzata" ? `vybavuje ${memberName(m.handled_by)}` : m.status === "vybavena" ? `vybavil(a) ${memberName(m.handled_by)}` : "";
+    const btns = [];
+    if (m.status === "otvorena" && m.created_by !== me) btns.push(`<button class="btn sm" data-act="prevzata" data-id="${m.id}">Vybavím to</button>`);
+    if (m.status === "otvorena" || m.status === "prevzata") btns.push(`<button class="btn ${m.status === "prevzata" && m.handled_by === me ? "" : "ghost"} sm" data-act="vybavena" data-id="${m.id}">Vybavené</button>`);
+    if ((m.status === "otvorena" || m.status === "prevzata") && m.created_by === me) btns.push(`<button class="btn ghost sm" data-act="zrusena" data-id="${m.id}">Zrušiť</button>`);
+    return `<div class="msg ${m.status}"><span class="ticon k-q-${m.kind}">${ICON[kd.icon]}</span>
+      <div class="main"><b>${esc(title)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}
+      <span class="sm mut">${esc(memberName(m.created_by))} · ${ago(m.created_at)}${who ? ` · ${esc(who)}` : ""}</span>
+      ${btns.length ? `<div class="mbtns">${btns.join("")}</div>` : ""}</div>
+      <span class="pill ${stCls}">${stLabel}</span></div>`;
+  };
+  box.innerHTML = `
+    <section><h2 style="margin-bottom:10px">Aktuálne</h2>
+    ${active.length ? `<div class="list">${active.map(card).join("")}</div>` : `<div class="card empty"><b>Nič nečaká</b>Keď niekto bude potrebovať pomoc alebo odvoz, uvidíte to tu a príde vám upozornenie.</div>`}</section>
+    ${old.length ? `<section><h2 style="margin-bottom:10px">Nedávno vybavené</h2><div class="list">${old.map(card).join("")}</div></section>` : ""}`;
+  box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", async () => {
+    const st = b.dataset.act; b.disabled = true;
+    const m = data.find((x) => x.id === b.dataset.id);
+    const upd = { status: st };
+    if (st === "prevzata" || (st === "vybavena" && !m.handled_by)) upd.handled_by = me;
+    const { error: e2 } = await sb.from("quick_messages").update(upd).eq("id", b.dataset.id);
+    if (e2) { b.disabled = false; return toast(errText(e2)); }
+    toast(st === "prevzata" ? "Ostatní uvidia, že to vybavíte" : st === "vybavena" ? "Označené ako vybavené" : "Správa zrušená");
+    renderMessages();
+  }));
 }
 
 /* ================= DOMÁCNOSŤ ================= */
@@ -1274,7 +1379,7 @@ async function loadContext() {
 /* ================= smerovanie ================= */
 const currentView = () => (location.hash.replace(/^#\/?/, "").split("/")[0] || "prehlad");
 const currentSub = () => location.hash.replace(/^#\/?/, "").split("/")[1] || "";
-const VIEWS = { prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
+const VIEWS = { spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
 function route() {
   if (!S.user || !S.hid || !S.unlocked) return;
   closeSheet();

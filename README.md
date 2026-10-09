@@ -8,6 +8,9 @@ Spoločný prehľad celej domácnosti pre všetkých členov rodiny – na mobil
   Deti či starí rodičia môžu byť v rodine aj bez vlastného účtu.
 - **Prehľad** – všetko, čo vás čaká v najbližších 30 dňoch, a čo je po termíne.
 - **Kalendár** – pripomienky, návštevy lekára, STK a EK, diaľničné známky, platby a koniec poistení, záruky a servisy zariadení.
+- **Rýchle správy** – „Potrebujem pomoc“, „Odvoz / taxi“, „Do školy“, „Zo školy“, „Nakúpiť“ alebo vlastná správa,
+  s časom a miestom. Ostatní kliknú „Vybavím to“ / „Vybavené“; každá nová správa aj zmena stavu príde
+  hneď ako upozornenie všetkým ostatným členom.
 - **Nákupný zoznam** – spoločný, mení sa u všetkých naživo.
 - **Domácnosť** – zariadenia (záruka, servis), autá (STK, EK, známka, servis), poistenia
   (auto, osoby, životné, majetok) s ročným súčtom poistného.
