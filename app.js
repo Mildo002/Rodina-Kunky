@@ -485,7 +485,7 @@ async function viewPrehlad() {
     const lateK = late.filter((e) => e.k === k).length;
     const next = soon.find((e) => e.k === k);
     if (lateK) return { line: `${lateK} po termíne`, alert: true, badge: lateK };
-    if (next) return { line: `${next.title.replace(/^[^:]+:\s*/, "")} · ${relDays(next.date)}`, warn: daysTo(next.date) <= 7 };
+    if (next) return { line: `${next.title} · ${relDays(next.date)}`, warn: daysTo(next.date) <= 7 };
     return { line: null };
   };
   const tiles = TILES.map((tl) => {
@@ -732,6 +732,7 @@ async function renderMessages() {
     if (m.status === "otvorena" && m.created_by !== me) btns.push(`<button class="btn sm" data-act="prevzata" data-id="${m.id}">Vybavím to</button>`);
     if (m.status === "otvorena" || m.status === "prevzata") btns.push(`<button class="btn ${m.status === "prevzata" && m.handled_by === me ? "" : "ghost"} sm" data-act="vybavena" data-id="${m.id}">Vybavené</button>`);
     if ((m.status === "otvorena" || m.status === "prevzata") && m.created_by === me) btns.push(`<button class="btn ghost sm" data-act="zrusena" data-id="${m.id}">Zrušiť</button>`);
+    if ((m.status === "vybavena" || m.status === "zrusena") && (m.created_by === me || isAdmin())) btns.push(`<button class="btn ghost sm" data-delmsg="${m.id}">Odstrániť</button>`);
     return `<div class="msg ${m.status}"><span class="ticon k-q-${m.kind}">${ICON[kd.icon]}</span>
       <div class="main"><b>${esc(title)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}
       <span class="sm mut">${esc(memberName(m.created_by))} · ${ago(m.created_at)}${who ? ` · ${esc(who)}` : ""}</span>
@@ -742,6 +743,12 @@ async function renderMessages() {
     <section><h2 style="margin-bottom:10px">Aktuálne</h2>
     ${active.length ? `<div class="list">${active.map(card).join("")}</div>` : `<div class="card empty"><b>Nič nečaká</b>Keď niekto bude potrebovať pomoc alebo odvoz, uvidíte to tu a príde vám upozornenie.</div>`}</section>
     ${old.length ? `<section><h2 style="margin-bottom:10px">Nedávno vybavené</h2><div class="list">${old.map(card).join("")}</div></section>` : ""}`;
+  box.querySelectorAll("[data-delmsg]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Odstrániť túto správu z histórie?")) return;
+    const { error: e3 } = await sb.from("quick_messages").delete().eq("id", b.dataset.delmsg);
+    if (e3) return toast(errText(e3));
+    toast("Správa odstránená"); renderMessages();
+  }));
   box.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", async () => {
     const st = b.dataset.act; b.disabled = true;
     const m = data.find((x) => x.id === b.dataset.id);
@@ -759,10 +766,10 @@ async function viewDomacnost() {
   const tab = S.homeTab;
   const tabs = [["zariadenia", "Zariadenia"], ["nakupy", "Nákupy a záruky"], ["auta", "Autá"], ["poistenia", "Poistenia"]];
   const shell = (body, addLabel) => layout("domacnost", `
-    <div class="head"><h1>Domácnosť</h1><button class="btn sm" id="add">${addLabel}</button></div>
+    <div class="head"><h1>Domácnosť</h1>${addLabel ? `<button class="btn sm" id="add">${addLabel}</button>` : ""}</div>
     <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${k === tab}" data-tab="${k}">${l}</button>`).join("")}</div>
     ${body}`);
-  shell('<p class="mut">Načítavam…</p>', "Pridať");
+  shell('<p class="mut">Načítavam…</p>', "");
   const bindTabs = () => $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { S.homeTab = b.dataset.tab; location.hash = `#/domacnost/${b.dataset.tab}`; }));
   const nearest = (row, keys) => keys.map(([k, l]) => row[k] ? { d: row[k], l } : null).filter(Boolean).sort((a, b) => a.d.localeCompare(b.d))[0];
 
