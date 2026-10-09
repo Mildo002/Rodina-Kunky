@@ -109,7 +109,7 @@ const TOOLS = [
       properties: {
         zariadenie: { type: "string", description: "Ktoré zariadenie: názov alebo „kúrenie“, „klíma“, „voda“. Ak je len jedno, netreba." },
         zapnut: { type: "boolean", description: "true = zapnúť, false = vypnúť" },
-        teplota: { type: "number", description: "Požadovaná teplota v °C (pri čerpadle s posunom vody je to posun, napr. +2)." },
+        teplota: { type: "number", description: "Požadovaná teplota v °C. Pri kúrení je to teplota v izbe (napr. 22); hodnota nad rozsah izby (napr. 45) nastaví teplotu vykurovacej vody. Pri teplej vode teplota v nádrži." },
         rezim: { type: "string", enum: ["heating", "cooling", "auto", "dry", "fanOnly"], description: "heating = kúrenie, cooling = chladenie" },
         boost: { type: "boolean", description: "Rýchly ohrev vody / výkonný režim" },
       },
@@ -142,10 +142,12 @@ const KINDS: Record<string, string> = { cerpadlo: "tepelné čerpadlo", klima: "
 const MODES: Record<string, string> = { heating: "kúrenie", cooling: "chladenie", auto: "automaticky", dry: "odvlhčovanie", fanOnly: "ventilátor" };
 const deg = (v: number | null) => (v == null ? "" : `${String(Math.round(v * 10) / 10).replace(".", ",")} °C`);
 function describe(x: any) {
-  const sp = x.setpoints.find((s: any) => s.settable) || x.setpoints[0];
+  const sp = ["roomTemperature", "domesticHotWaterTemperature", "leavingWaterTemperature", "leavingWaterOffset"].map((k) => x.setpoints.find((s: any) => s.key === k)).find(Boolean) || x.setpoints[0];
+  const lw = x.setpoints.find((s: any) => s.key === "leavingWaterTemperature");
   return `• ${x.name} (${KINDS[x.kind] || x.kind}): ${x.on ? "zapnuté" : "vypnuté"}, režim ${MODES[x.mode] || x.mode}` +
     (x.roomTemp != null ? `, v izbe ${deg(x.roomTemp)}` : "") + (x.tankTemp != null ? `, v nádrži ${deg(x.tankTemp)}` : "") +
     (x.outdoorTemp != null ? `, vonku ${deg(x.outdoorTemp)}` : "") + (sp ? `, nastavené ${sp.key === "leavingWaterOffset" ? `posun ${sp.value}` : deg(sp.value)}` : "") +
+    (lw && lw !== sp ? `, vykurovacia voda ${deg(lw.value)}${x.leavingWater != null ? ` (teraz ${deg(x.leavingWater)})` : ""}` : "") +
     (!x.online ? " – OFFLINE" : "");
 }
 
@@ -171,8 +173,13 @@ async function callTool(name: string, a: Record<string, any>, c: Ctx) {
     if (a.rezim) { if (!x.modes.includes(a.rezim)) return fail(`Režim ${a.rezim} toto zariadenie nepodporuje.`); await set("operationMode", a.rezim); done.push(`režim ${MODES[a.rezim] || a.rezim}`); x.mode = a.rezim; }
     if (typeof a.teplota === "number") {
       const fresh = (st.items || []).find((i: any) => i.device === x.device && i.mp === x.mp) || x;
-      const sp = fresh.setpoints.find((s: any) => s.settable && s.key !== "leavingWaterOffset") || fresh.setpoints.find((s: any) => s.settable);
-      if (!sp) return fail("Teplotu na tomto zariadení nemožno meniť cez Onecta.");
+      // poradie: teplota v izbe → teplá voda → vykurovacia voda → posun; vyberie sa prvá, do ktorej rozsahu hodnota padne
+      const ORDER = ["roomTemperature", "domesticHotWaterTemperature", "leavingWaterTemperature", "leavingWaterOffset"];
+      const cand = fresh.setpoints.filter((s: any) => s.settable).sort((p: any, q: any) => (ORDER.indexOf(p.key) + 99) % 99 - (ORDER.indexOf(q.key) + 99) % 99);
+      const fits = (s: any) => (s.min == null || a.teplota >= s.min) && (s.max == null || a.teplota <= s.max);
+      const sp = cand.find(fits);
+      if (!cand.length) return fail("Teplotu na tomto zariadení nemožno meniť cez Onecta.");
+      if (!sp) return fail(`Hodnota ${a.teplota} je mimo rozsahu. Možnosti: ` + cand.map((s: any) => `${s.key === "roomTemperature" ? "v izbe" : s.key === "domesticHotWaterTemperature" ? "teplá voda" : s.key === "leavingWaterTemperature" ? "vykurovacia voda" : "posun"} ${s.min}–${s.max}`).join(", "));
       await set("temperatureControl", a.teplota, sp.path); done.push(sp.key === "leavingWaterOffset" ? `posun teploty vody ${a.teplota}` : `teplota ${deg(a.teplota)}`);
     }
     if (typeof a.boost === "boolean") { if (!x.powerful?.settable) return fail("Toto zariadenie nemá rýchly ohrev."); await set("powerfulMode", a.boost ? "on" : "off"); done.push(a.boost ? "boost zapnutý" : "boost vypnutý"); }
