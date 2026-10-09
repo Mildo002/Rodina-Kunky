@@ -83,6 +83,11 @@ const ICON = {
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>',
   heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/><path d="M8 12h2l1-2 2 4 1-2h2"/></svg>',
   people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg>',
+  car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16.5h14v-4.2a2 2 0 0 0-.4-1.2L16.8 8.5a2 2 0 0 0-1.6-.8H8.8a2 2 0 0 0-1.6.8L5.4 11.1a2 2 0 0 0-.4 1.2z"/><path d="M5 16.5V19M19 16.5V19M4 12h16"/><circle cx="8" cy="14.3" r=".9"/><circle cx="16" cy="14.3" r=".9"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.4-4.4"/></svg>',
+  receipt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.3z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/></svg>',
+  washer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M4.5 7.5h15"/><circle cx="12" cy="14" r="4"/><path d="M8 5.2h.01M11 5.2h.01"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>',
   face: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -422,7 +427,7 @@ function bindEvents(root, events) {
 
 /* ================= rozloženie ================= */
 const TABS = [
-  ["prehlad", "Prehľad", ICON.home], ["kalendar", "Kalendár", ICON.cal], ["nakup", "Nákup", ICON.cart],
+  ["prehlad", "Domov", ICON.home], ["kalendar", "Kalendár", ICON.cal], ["nakup", "Nákup", ICON.cart],
   ["domacnost", "Domácnosť", ICON.box], ["zdravie", "Zdravie", ICON.heart],
 ];
 function layout(view, inner) {
@@ -443,6 +448,17 @@ function layout(view, inner) {
 const loading = (view) => layout(view, '<p class="mut">Načítavam…</p>');
 
 /* ================= PREHĽAD ================= */
+/* Dlaždice úvodnej obrazovky – jedna pre každú sekciu */
+const TILES = [
+  { k: "pripomienka", href: "#/kalendar", icon: "cal", name: "Kalendár", empty: "Pripomienky a termíny" },
+  { k: "nakupny", href: "#/nakup", icon: "cart", name: "Nákupný zoznam", empty: "Spoločný zoznam" },
+  { k: "zdravie", href: "#/zdravie", icon: "heart", name: "Zdravie", empty: "Prehliadky a lekári" },
+  { k: "auto", href: "#/domacnost/auta", icon: "car", name: "Autá", empty: "STK, EK, známka, servis" },
+  { k: "poistenie", href: "#/domacnost/poistenia", icon: "shield", name: "Poistenia", empty: "Auto, osoby, majetok" },
+  { k: "nakup", href: "#/domacnost/nakupy", icon: "receipt", name: "Nákupy a záruky", empty: "Bločky a koniec záruky" },
+  { k: "zariadenie", href: "#/domacnost/zariadenia", icon: "washer", name: "Zariadenia", empty: "Spotrebiče a servis" },
+  { k: "rodina", href: "#/rodina", icon: "people", name: "Rodina", empty: "Členovia a nastavenia" },
+];
 async function viewPrehlad() {
   loading("prehlad");
   const to = addDays(today(), 30);
@@ -450,33 +466,47 @@ async function viewPrehlad() {
   try {
     [ev, shop] = await Promise.all([loadEvents(null, to), sb.from("shopping_items").select("id", { count: "exact", head: true }).eq("household_id", S.hid).eq("checked", false)]);
   } catch (e) { return layout("prehlad", `<div class="err">${esc(errText(e))}</div>`); }
-  const late = ev.filter((e) => e.date < today());
-  const soon = ev.filter((e) => e.date >= today());
+  const t = today();
+  const late = ev.filter((e) => e.date < t);
+  const soon = ev.filter((e) => e.date >= t);
+  const status = (k) => {
+    if (k === "nakupny") { const n = shop.count ?? 0; return { line: n ? `${n} ${plural(n, "položka", "položky", "položiek")} na kúpenie` : "Nič netreba kúpiť", badge: n || "" }; }
+    if (k === "rodina") return { line: `${S.persons.length} ${plural(S.persons.length, "osoba", "osoby", "osôb")} v rodine`, badge: "" };
+    const lateK = late.filter((e) => e.k === k).length;
+    const next = soon.find((e) => e.k === k);
+    if (lateK) return { line: `${lateK} po termíne`, alert: true, badge: lateK };
+    if (next) return { line: `${next.title.replace(/^[^:]+:\s*/, "")} · ${relDays(next.date)}`, warn: daysTo(next.date) <= 7 };
+    return { line: null };
+  };
+  const tiles = TILES.map((tl) => {
+    const st = status(tl.k);
+    return `<a class="tile k-${tl.k}" href="${tl.href}">
+      <span class="ticon">${ICON[tl.icon]}${st.badge ? `<i class="badge ${st.alert ? "bad" : ""}">${st.badge}</i>` : ""}</span>
+      <b>${esc(tl.name)}</b>
+      <span class="tline ${st.alert ? "bad" : st.warn ? "warn" : ""}">${esc(st.line || tl.empty)}</span></a>`;
+  }).join("");
   const groups = {};
-  for (const e of soon) (groups[e.date] ||= []).push(e);
-  const dayBlock = (date, items, cls, numHtml) => `<div class="day ${cls}"><div class="num">${numHtml}</div><div class="list">${items.map((e) => eventRow(e, cls === "late")).join("")}</div></div>`;
-  let agenda = "";
-  if (late.length) agenda += dayBlock("", late, "late", `<b>!</b><small>po termíne</small>`);
+  for (const e of soon.slice(0, 8)) (groups[e.date] ||= []).push(e);
+  const dayBlock = (items, cls, numHtml) => `<div class="day ${cls}"><div class="num">${numHtml}</div><div class="list">${items.map((e) => eventRow(e, cls === "late")).join("")}</div></div>`;
+  let agenda = late.length ? dayBlock(late, "late", `<b>!</b><small>po termíne</small>`) : "";
   for (const [d, items] of Object.entries(groups)) {
     const dt = parse(d);
-    agenda += dayBlock(d, items, d === today() ? "today" : "",
-      `<b>${dt.getDate()}</b><small>${d === today() ? "dnes" : dt.toLocaleDateString("sk-SK", { weekday: "short", month: "short" })}</small>`);
+    agenda += dayBlock(items, d === t ? "today" : "", `<b>${dt.getDate()}</b><small>${d === t ? "dnes" : dt.toLocaleDateString("sk-SK", { weekday: "short", month: "short" })}</small>`);
   }
   const hour = new Date().getHours();
   const greet = hour < 10 ? "Dobré ráno" : hour < 18 ? "Dobrý deň" : "Dobrý večer";
   layout("prehlad", `
-    <div class="head"><div><h1>${greet}, ${esc(myName().split(" ")[0])}</h1><p class="mut">Čo vás čaká v najbližších 30 dňoch</p></div></div>
-    <div class="stats">
-      <a class="stat ${late.length ? "alert" : ""}" href="#/kalendar"><b>${late.length}</b><span>po termíne</span></a>
-      <a class="stat" href="#/kalendar"><b>${soon.length}</b><span>${plural(soon.length, "termín", "termíny", "termínov")} do 30 dní</span></a>
-      <a class="stat" href="#/nakup"><b>${shop.count ?? 0}</b><span>na nákupnom zozname</span></a>
-    </div>
+    <div class="head"><h1>${greet}, ${esc(myName().split(" ")[0])}</h1></div>
     <div id="pushAsk"></div>
-    ${ev.length ? `<div class="agenda">${agenda}</div>` : `<div class="card empty"><b>Najbližších 30 dní je voľných</b>Pridajte pripomienku, auto s termínom STK alebo poistenie a termíny sa tu zobrazia samy.</div>`}
-    <div class="row" style="padding:16px 0 0;border:0;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="addRem">Pridať pripomienku</button>
-      <button class="btn ghost" id="addVis">Pridať návštevu lekára</button>
-    </div>`);
+    <nav class="tiles" aria-label="Sekcie">${tiles}</nav>
+    <section>
+      <div class="head"><h2>Najbližšie termíny</h2><a class="btn ghost sm" href="#/kalendar">Celý kalendár</a></div>
+      ${ev.length ? `<div class="agenda">${agenda}</div>` : `<div class="card empty"><b>Najbližších 30 dní je voľných</b>Pridajte pripomienku, auto s termínom STK alebo poistenie a termíny sa tu zobrazia samy.</div>`}
+      <div class="row" style="padding:16px 0 0;border:0;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="addRem">Pridať pripomienku</button>
+        <button class="btn ghost" id="addVis">Pridať návštevu lekára</button>
+      </div>
+    </section>`);
   bindEvents($app, ev);
   document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: today() });
   document.getElementById("addVis").onclick = () => newVisit();
@@ -624,7 +654,7 @@ async function viewDomacnost() {
     <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${k === tab}" data-tab="${k}">${l}</button>`).join("")}</div>
     ${body}`);
   shell('<p class="mut">Načítavam…</p>', "Pridať");
-  const bindTabs = () => $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { S.homeTab = b.dataset.tab; viewDomacnost(); }));
+  const bindTabs = () => $app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { S.homeTab = b.dataset.tab; location.hash = `#/domacnost/${b.dataset.tab}`; }));
   const nearest = (row, keys) => keys.map(([k, l]) => row[k] ? { d: row[k], l } : null).filter(Boolean).sort((a, b) => a.d.localeCompare(b.d))[0];
 
   if (tab === "zariadenia") {
@@ -1237,11 +1267,13 @@ async function loadContext() {
 
 /* ================= smerovanie ================= */
 const currentView = () => (location.hash.replace(/^#\/?/, "").split("/")[0] || "prehlad");
+const currentSub = () => location.hash.replace(/^#\/?/, "").split("/")[1] || "";
 const VIEWS = { prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
 function route() {
   if (!S.user || !S.hid || !S.unlocked) return;
   closeSheet();
   const v = currentView();
+  if (v === "domacnost" && currentSub()) S.homeTab = currentSub();
   (VIEWS[v] || viewPrehlad)();
   window.scrollTo(0, 0);
 }
