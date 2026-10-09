@@ -82,14 +82,24 @@ async function vapidKeys() {
 }
 
 /* ---------- odoslanie ---------- */
-type Msg = { title: string; body: string; url?: string; tag?: string };
+type Msg = { title: string; body: string; url?: string; tag?: string; important?: boolean };
+/* Počet neprečítaných upozornení (od posledného otvorenia aplikácie) – číslo na ikone */
+async function unread(userId: string) {
+  const { data: p } = await db.from("profiles").select("last_seen_at").eq("id", userId).single();
+  const { count } = await db.from("notification_log").select("key", { count: "exact", head: true })
+    .eq("user_id", userId).gt("sent_at", p?.last_seen_at || "1970-01-01");
+  return count || 0;
+}
 async function pushToUser(userId: string, msg: Msg) {
   const { data: subs } = await db.from("push_subscriptions").select("*").eq("user_id", userId);
+  if (!subs?.length) return 0;
+  const badge = await unread(userId);
   let ok = 0;
   for (const s of subs || []) {
     try {
+      // urgency high = doručiť hneď aj pri zhasnutej obrazovke / úspornom režime
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        JSON.stringify({ ...msg, url: msg.url || "/#/prehlad" }), { TTL: 86400 });
+        JSON.stringify({ ...msg, url: msg.url || "/#/prehlad", badge }), { TTL: 86400, urgency: "high" });
       ok++;
     } catch (e) {
       const code = (e as { statusCode?: number }).statusCode;
@@ -272,7 +282,12 @@ async function quickMessage(id: string, actor: string | null) {
   };
   await vapidKeys();
   let sent = 0;
-  for (const u of ids) if (u !== actor) sent += await pushToUser(u, { title: T[m.status], body: B[m.status], url: "/#/spravy", tag: `sprava-${m.id}` });
+  for (const u of ids) {
+    if (u === actor) continue;
+    const { error } = await db.from("notification_log").insert({ user_id: u, key: `sprava:${m.id}:${m.status}:${m.updated_at}` });
+    if (error) continue; // už odoslané
+    sent += await pushToUser(u, { title: T[m.status], body: B[m.status], url: "/#/spravy", tag: `sprava-${m.id}`, important: m.status === "otvorena" });
+  }
   return { sent };
 }
 

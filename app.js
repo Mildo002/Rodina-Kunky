@@ -946,7 +946,8 @@ const PUSH_RULES = `<ul class="rules">
   <li><b>Diaľničná známka</b> – ročná 7 dní vopred, kratšia 24 hodín pred koncom, 24-hodinová pri skončení platnosti</li>
   <li><b>Koniec poistenia</b> – 3 mesiace vopred</li>
   <li><b>Koniec záruky</b> – 30 dní vopred, <b>servis</b> – 7 dní vopred</li>
-</ul><p class="mut sm">Pripomienky a známky chodia v presnom čase, ostatné upozornenia ráno o 7:00 – na všetky zariadenia, kde ich zapnete.</p>`;
+</ul><p class="mut sm">Pripomienky a známky chodia v presnom čase, ostatné upozornenia ráno o 7:00 – na všetky zariadenia, kde ich zapnete.
+  Zobrazia sa aj na zamknutej obrazovke a na ikone aplikácie uvidíte počet nových.${isIOS ? " Na iPhone to skontrolujte v Nastavenia → Upozornenia → Rodina: zapnite Zamknutá obrazovka a Odznaky." : ""}</p>`;
 async function renderPushCard(box) {
   if (!box) return;
   const st = await pushState();
@@ -973,6 +974,14 @@ async function renderPushCard(box) {
     toast(error ? errText(error) : data?.sent ? "Odoslané – o chvíľu príde" : "Nepodarilo sa doručiť, skúste vypnúť a znova zapnúť");
   };
   box.querySelector("#pOff").onclick = async () => { await disablePush(); toast("Upozornenia vypnuté"); renderPushCard(box); };
+}
+
+/* Aplikácia otvorená → vynulovať číslo na ikone a upratať zobrazené upozornenia */
+async function markSeen() {
+  if (!S.user || !S.unlocked) return;
+  try { navigator.clearAppBadge?.(); } catch {}
+  try { const reg = await navigator.serviceWorker?.getRegistration(); (await reg?.getNotifications())?.forEach((n) => n.close()); } catch {}
+  sb.rpc("mark_seen").then(() => {}, () => {});
 }
 
 /* ================= RODINA (nastavenia) ================= */
@@ -1234,7 +1243,7 @@ document.addEventListener("visibilitychange", async () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
   if (S.user && S.unlocked && getLock() && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_MS) {
     S.unlocked = false; closeSheet(); await lockScreen(); route();
-  }
+  } else markSeen();
 });
 function lockSettings(box) {
   if (!box) return;
@@ -1393,6 +1402,7 @@ function route() {
   closeSheet();
   const v = currentView();
   if (v === "domacnost" && currentSub()) S.homeTab = currentSub();
+  markSeen();
   (VIEWS[v] || viewPrehlad)();
   window.scrollTo(0, 0);
 }
