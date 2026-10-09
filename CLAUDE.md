@@ -37,7 +37,13 @@
   (recept / poznámka / nápad, súkromné vidí iba autor).
 - Konektor pre Claude: edge funkcia `rodina-mcp` (MCP cez HTTP, JSON-RPC, verify_jwt vypnuté). Kľúč v URL
   `/functions/v1/rodina-mcp/<kľúč>`, v `api_tokens` iba SHA-256 odtlačok. Nástroje: pridat_pripomienku, pridat_poznamku,
-  pridat_na_nakup, poslat_rychlu_spravu, zoznam_terminov, hladat_poznamky (zdravotné údaje cez konektor nejdú).
+  pridat_na_nakup, poslat_rychlu_spravu, zoznam_terminov, hladat_poznamky, kurenie_stav, kurenie_nastav
+  (zdravotné údaje cez konektor nejdú).
+- Kúrenie / chladenie (Daikin Onecta): edge funkcia `daikin` (verify_jwt vypnuté; overenie tokenom používateľa
+  alebo `x-cron-secret` pre rodina-mcp). Akcie `cached`, `status`, `set`, `start`, `disconnect`; návrat OAuth
+  `/functions/v1/daikin/callback` → `#/kurenie?daikin=ok|chyba|…`. Tokeny a cache v `daikin_accounts` (iba server).
+  Limit Onecta 200 dotazov/deň → cache 15 min, vynútené obnovenie najskôr po 3 min. Tajomstvá `DAIKIN_CLIENT_ID`,
+  `DAIKIN_CLIENT_SECRET` v Supabase (Edge Functions → Secrets) zadáva majiteľ.
 - Zámok aplikácie je iba na zariadení (localStorage): PBKDF2 odtlačok kódu + WebAuthn platform authenticator.
 - Logo: `tools/logo_foto.py` (fotka `tools/kuny-foto.png` v srdci) generuje `logo.png`, `favicon.png`, `ikona-*.png`.
 

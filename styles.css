@@ -250,3 +250,29 @@ img.mark{background:none;object-fit:contain}
 .nbody{white-space:pre-line;color:var(--ink);opacity:.85;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
 .steps{padding-left:20px;margin:0}
 .steps li{margin:6px 0}
+
+/* ===== kúrenie / chladenie ===== */
+.k-kurenie{--k:#d0632a}
+.k-h-cerpadlo{--k:#d0632a} .k-h-klima{--k:#2f8fd6} .k-h-voda{--k:#c2416b}
+.hgrid{display:grid;gap:12px}
+@media (min-width:640px){.hgrid{grid-template-columns:1fr 1fr}}
+.hcard{background:var(--card);border:1px solid var(--line);border-top:5px solid var(--k);border-radius:18px;padding:14px 16px}
+.hcard:not(.on){opacity:.85}
+.hhead{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.hhead .ticon{margin:0;width:42px;height:42px;flex:none}
+.hhead .main{flex:1;min-width:0}
+.hhead .main b{display:block}
+.power{width:48px;height:48px;border-radius:50%;border:2px solid var(--line);background:var(--card);color:var(--mut);display:grid;place-items:center;cursor:pointer;flex:none}
+.power svg{width:24px;height:24px}
+.power.on{background:var(--k);border-color:var(--k);color:#fff}
+.htemps{display:flex;gap:22px;align-items:flex-end;margin:4px 0 12px}
+.htemps div{display:flex;flex-direction:column}
+.htemps b{font:700 1.15rem "Bricolage Grotesque",sans-serif}
+.htemps b.bigt{font-size:2.3rem;line-height:1}
+.mode{border:1.5px solid var(--line);background:var(--card);border-radius:99px;padding:7px 13px;font-weight:600;cursor:pointer;color:var(--ink)}
+.mode.sel{background:var(--k);border-color:var(--k);color:#fff}
+.stepper{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.stepper > span{font-weight:600}
+.stepper div{display:flex;align-items:center;gap:10px}
+.stepper button{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);font:700 1.4rem/1 "Source Sans 3",sans-serif;cursor:pointer;color:var(--ink)}
+.stepper b{min-width:72px;text-align:center;font:800 1.35rem "Bricolage Grotesque",sans-serif}

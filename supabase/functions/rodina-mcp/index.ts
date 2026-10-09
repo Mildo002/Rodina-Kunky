@@ -97,6 +97,25 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { dni: { type: "integer", description: "Koľko dní dopredu, predvolené 14." } } },
   },
   {
+    name: "kurenie_stav",
+    description: "Zistí stav tepelného čerpadla, klimatizácie a teplej vody Daikin (teploty doma a vonku, zapnuté/vypnuté, režim, nastavená teplota).",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "kurenie_nastav",
+    description: "Ovláda Daikin tepelné čerpadlo, klimatizáciu alebo ohrev teplej vody: zapnúť/vypnúť, nastaviť teplotu, režim alebo rýchly ohrev. Zmena sa prejaví do 1–2 minút.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        zariadenie: { type: "string", description: "Ktoré zariadenie: názov alebo „kúrenie“, „klíma“, „voda“. Ak je len jedno, netreba." },
+        zapnut: { type: "boolean", description: "true = zapnúť, false = vypnúť" },
+        teplota: { type: "number", description: "Požadovaná teplota v °C (pri čerpadle s posunom vody je to posun, napr. +2)." },
+        rezim: { type: "string", enum: ["heating", "cooling", "auto", "dry", "fanOnly"], description: "heating = kúrenie, cooling = chladenie" },
+        boost: { type: "boolean", description: "Rýchly ohrev vody / výkonný režim" },
+      },
+    },
+  },
+  {
     name: "hladat_poznamky",
     description: "Vyhľadá v poznámkach a receptoch rodiny podľa slova.",
     inputSchema: { type: "object", required: ["hladat"], properties: { hladat: { type: "string" } } },
@@ -108,7 +127,58 @@ const fail = (text: string) => ({ content: [{ type: "text", text }], isError: tr
 const isDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isTime = (s: unknown) => typeof s === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(s);
 
+/* Daikin – volá funkciu „daikin“ interne (tajomstvo cronu), údaje sú za rodinu z kľúča */
+async function daikinFn(c: Ctx, body: Record<string, unknown>) {
+  const { data: s } = await db.from("app_secrets").select("value").eq("key", "cron").single();
+  const res = await fetch("https://tiadykirohlgabalkxyn.supabase.co/functions/v1/daikin", {
+    method: "POST", headers: { "Content-Type": "application/json", "x-cron-secret": s!.value },
+    body: JSON.stringify({ household_id: c.household_id, user_id: c.user_id, ...body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Daikin ${res.status}`);
+  return data;
+}
+const KINDS: Record<string, string> = { cerpadlo: "tepelné čerpadlo", klima: "klimatizácia", voda: "teplá voda" };
+const MODES: Record<string, string> = { heating: "kúrenie", cooling: "chladenie", auto: "automaticky", dry: "odvlhčovanie", fanOnly: "ventilátor" };
+const deg = (v: number | null) => (v == null ? "" : `${String(Math.round(v * 10) / 10).replace(".", ",")} °C`);
+function describe(x: any) {
+  const sp = x.setpoints.find((s: any) => s.settable) || x.setpoints[0];
+  return `• ${x.name} (${KINDS[x.kind] || x.kind}): ${x.on ? "zapnuté" : "vypnuté"}, režim ${MODES[x.mode] || x.mode}` +
+    (x.roomTemp != null ? `, v izbe ${deg(x.roomTemp)}` : "") + (x.tankTemp != null ? `, v nádrži ${deg(x.tankTemp)}` : "") +
+    (x.outdoorTemp != null ? `, vonku ${deg(x.outdoorTemp)}` : "") + (sp ? `, nastavené ${sp.key === "leavingWaterOffset" ? `posun ${sp.value}` : deg(sp.value)}` : "") +
+    (!x.online ? " – OFFLINE" : "");
+}
+
 async function callTool(name: string, a: Record<string, any>, c: Ctx) {
+  if (name === "kurenie_stav") {
+    const st = await daikinFn(c, { action: "status" });
+    if (!st.connected) return fail("Daikin zatiaľ nie je prepojený s Rodinou (Rodina → Kúrenie / chladenie → Prepojiť).");
+    const age = st.cache_at ? Math.round((Date.now() - new Date(st.cache_at).getTime()) / 60000) : null;
+    return ok((st.items || []).map(describe).join("\n") + (age != null ? `\n(údaje spred ${age} min${st.warning ? "; " + st.warning : ""})` : ""));
+  }
+  if (name === "kurenie_nastav") {
+    let st = await daikinFn(c, { action: "status" });
+    if (!st.connected) return fail("Daikin zatiaľ nie je prepojený s Rodinou.");
+    const items: any[] = st.items || [];
+    const w = String(a.zariadenie || "").toLowerCase();
+    let x = w ? items.find((i) => i.name.toLowerCase().includes(w)) : null;
+    if (!x && w) x = items.find((i) => (/vod|bojler|nádr/.test(w) && i.kind === "voda") || (/klím|klim|chlad/.test(w) && i.kind === "klima") || (/kúr|kur|čerp|cerp|teplo/.test(w) && i.kind === "cerpadlo"));
+    if (!x) { const climate = items.filter((i) => i.kind !== "voda"); x = climate.length === 1 ? climate[0] : null; }
+    if (!x) return fail("Neviem, ktoré zariadenie. Možnosti: " + items.map((i) => i.name).join(", "));
+    const done: string[] = [];
+    const set = async (characteristic: string, value: unknown, path?: string) => { st = await daikinFn(c, { action: "set", device: x.device, mp: x.mp, characteristic, value, path }); };
+    if (typeof a.zapnut === "boolean") { await set("onOffMode", a.zapnut ? "on" : "off"); done.push(a.zapnut ? "zapnuté" : "vypnuté"); }
+    if (a.rezim) { if (!x.modes.includes(a.rezim)) return fail(`Režim ${a.rezim} toto zariadenie nepodporuje.`); await set("operationMode", a.rezim); done.push(`režim ${MODES[a.rezim] || a.rezim}`); x.mode = a.rezim; }
+    if (typeof a.teplota === "number") {
+      const fresh = (st.items || []).find((i: any) => i.device === x.device && i.mp === x.mp) || x;
+      const sp = fresh.setpoints.find((s: any) => s.settable && s.key !== "leavingWaterOffset") || fresh.setpoints.find((s: any) => s.settable);
+      if (!sp) return fail("Teplotu na tomto zariadení nemožno meniť cez Onecta.");
+      await set("temperatureControl", a.teplota, sp.path); done.push(sp.key === "leavingWaterOffset" ? `posun teploty vody ${a.teplota}` : `teplota ${deg(a.teplota)}`);
+    }
+    if (typeof a.boost === "boolean") { if (!x.powerful?.settable) return fail("Toto zariadenie nemá rýchly ohrev."); await set("powerfulMode", a.boost ? "on" : "off"); done.push(a.boost ? "boost zapnutý" : "boost vypnutý"); }
+    if (!done.length) return fail("Nepovedali ste, čo zmeniť (zapnúť/vypnúť, teplotu, režim alebo boost).");
+    return ok(`${x.name}: ${done.join(", ")}. Zariadenie to prevezme do 1–2 minút.`);
+  }
   if (name === "pridat_pripomienku") {
     if (!a.nazov?.trim()) return fail("Chýba názov pripomienky.");
     if (!isDate(a.datum)) return fail("Dátum musí byť vo formáte RRRR-MM-DD.");

@@ -94,6 +94,10 @@ const ICON = {
   note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/></svg>',
   mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
   pin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 3l6 6-3 1-3.5 3.5.5 4.5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 4.5.5L13 6z"/></svg>',
+  thermo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v6.5"/><path d="M17 6h3M17 9.5h2"/></svg>',
+  snow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M4.2 6.5l15.6 11M4.2 17.5l15.6-11"/><path d="m9 3.5 3 2.5 3-2.5M9 20.5l3-2.5 3 2.5"/></svg>',
+  drop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11z"/></svg>',
+  power: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>',
   face: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -462,6 +466,7 @@ const loading = (view) => layout(view, '<p class="mut">Načítavam…</p>');
 const TILES = [
   { k: "sprava", href: "#/spravy", icon: "msg", name: "Rýchle správy", empty: "Pomoc, odvoz, škola…" },
   { k: "poznamka", href: "#/pripomienky", icon: "note", name: "Pripomienky", empty: "Poznámky, recepty, nápady" },
+  { k: "kurenie", href: "#/kurenie", icon: "thermo", name: "Kúrenie / chladenie", empty: "Daikin – čerpadlo a klíma" },
   { k: "pripomienka", href: "#/kalendar", icon: "cal", name: "Kalendár", empty: "Pripomienky a termíny" },
   { k: "nakupny", href: "#/nakup", icon: "cart", name: "Nákupný zoznam", empty: "Spoločný zoznam" },
   { k: "zdravie", href: "#/zdravie", icon: "heart", name: "Zdravie", empty: "Prehliadky a lekári" },
@@ -530,6 +535,19 @@ async function viewPrehlad() {
   document.getElementById("addRem").onclick = () => editRecord(FORMS.reminder(), { due_on: today(), remind_before_minutes: 120 });
   document.getElementById("addVis").onclick = () => newVisit();
   askForPush();
+  fillHeatTile();
+}
+/* stav na dlaždici Kúrenie – iba z uložených údajov (nešetrí limit Daikin) */
+async function fillHeatTile() {
+  const el = document.querySelector('.tile.k-kurenie .tline'); if (!el) return;
+  try {
+    const st = await daikinCall({ action: "cached" });
+    if (!st.connected) { el.textContent = st.configured ? "Nie je prepojené" : "Daikin – čerpadlo a klíma"; return; }
+    const it = st.items || [];
+    const room = it.find((x) => x.roomTemp != null), out = it.find((x) => x.outdoorTemp != null);
+    const parts = [room ? `doma ${t1(room.roomTemp)}` : "", out ? `vonku ${t1(out.outdoorTemp)}` : ""].filter(Boolean);
+    el.textContent = parts.join(" · ") || `${it.length} ${plural(it.length, "zariadenie", "zariadenia", "zariadení")}`;
+  } catch {}
 }
 async function askForPush() {
   const box = document.getElementById("pushAsk");
@@ -668,6 +686,106 @@ async function renderShopping() {
     if (error) toast(errText(error)); else { toast("Kúpené položky odstránené"); renderShopping(); }
   });
   shopFirst = false;
+}
+
+/* ================= KÚRENIE / CHLADENIE (Daikin Onecta) ================= */
+async function daikinCall(body) {
+  const { data, error } = await sb.functions.invoke("daikin", { body: { household_id: S.hid, ...body } });
+  if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+  return data;
+}
+const t1 = (v) => `${Number(v).toLocaleString("sk-SK", { maximumFractionDigits: 1 })} °C`;
+const MODE_LABEL = { heating: "Kúrenie", cooling: "Chladenie", auto: "Automaticky", dry: "Odvlhčovanie", fanOnly: "Ventilátor", heatingDay: "Kúrenie – deň", heatingNight: "Kúrenie – noc" };
+const SP_LABEL = { roomTemperature: "Požadovaná teplota v izbe", leavingWaterOffset: "Posun teploty vody", leavingWaterTemperature: "Teplota vykurovacej vody", domesticHotWaterTemperature: "Teplota teplej vody" };
+const KIND = { cerpadlo: ["Tepelné čerpadlo", "thermo"], klima: ["Klimatizácia", "snow"], voda: ["Teplá voda", "drop"] };
+let heat = null;
+async function viewKurenie() {
+  const q = new URLSearchParams(location.hash.split("?")[1] || "");
+  const back = q.get("daikin");
+  if (back) {
+    toast({ ok: "Daikin je prepojený", zrusene: "Prepojenie zrušené", vyprsalo: "Prepojenie vypršalo – skúste znova", chyba: "Prepojenie s Daikin zlyhalo" }[back] || "");
+    history.replaceState(null, "", location.pathname + "#/kurenie");
+  }
+  layout("kurenie", `<div class="head"><h1>Kúrenie / chladenie</h1></div><div id="heat"><p class="mut">Načítavam údaje z Daikin…</p></div>`);
+  try { heat = await daikinCall({ action: "status" }); } catch (e) { heat = null; document.getElementById("heat").innerHTML = `<div class="err">${esc(errText(e))}</div>`; return; }
+  renderHeat();
+}
+function renderHeat() {
+  const box = document.getElementById("heat"); if (!box || !heat) return;
+  if (!heat.configured) {
+    box.innerHTML = `<div class="card empty"><b>Daikin ešte nie je nastavený</b>Správca musí zaregistrovať aplikáciu na portáli Daikin pre vývojárov a uložiť jej údaje na server. Potom sa tu objaví tlačidlo na prepojenie.</div>`; return;
+  }
+  if (!heat.connected) {
+    box.innerHTML = `<div class="card"><b>Prepojte Daikin Onecta</b>
+      <p class="mut">Prihlásite sa svojím účtom Onecta a povolíte Rodine ovládať tepelné čerpadlo a klimatizáciu. Prihlasovacie údaje zostávajú u Daikinu.</p>
+      ${isAdmin() ? '<button class="btn" id="dkCon">Prepojiť s Daikin Onecta</button>' : '<p class="mut sm">Prepojiť môže správca rodiny.</p>'}</div>`;
+    document.getElementById("dkCon")?.addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      try { const { url } = await daikinCall({ action: "start" }); location.href = url; } catch (er) { toast(errText(er)); e.target.disabled = false; }
+    });
+    return;
+  }
+  const age = heat.cache_at ? Math.round((Date.now() - new Date(heat.cache_at).getTime()) / 60000) : null;
+  const items = heat.items || [];
+  const card = (x, i) => {
+    const [kindLabel, icon] = KIND[x.kind] || KIND.klima;
+    const big = x.roomTemp ?? x.tankTemp ?? x.leavingWater;
+    const bigLabel = x.roomTemp != null ? "v izbe" : x.tankTemp != null ? "v nádrži" : x.leavingWater != null ? "výstupná voda" : "";
+    const sps = x.setpoints.filter((s) => s.settable);
+    return `<div class="hcard k-h-${x.kind} ${x.on ? "on" : ""}" data-i="${i}">
+      <div class="hhead"><span class="ticon">${ICON[icon]}</span><div class="main"><b>${esc(x.name)}</b><span class="sm mut">${esc(kindLabel)}${x.model ? ` · ${esc(x.model)}` : ""}</span></div>
+        ${x.onSettable ? `<button class="power ${x.on ? "on" : ""}" data-act="power" aria-pressed="${x.on}" aria-label="${x.on ? "Vypnúť" : "Zapnúť"}">${ICON.power}</button>` : ""}</div>
+      ${!x.online ? '<p class="err">Zariadenie je offline – nedá sa ovládať.</p>' : ""}${x.error ? '<p class="err">Zariadenie hlási poruchu – pozrite appku Onecta.</p>' : ""}
+      <div class="htemps">${big != null ? `<div><b class="bigt">${t1(big)}</b><span class="mut sm">${bigLabel}</span></div>` : ""}
+        ${x.outdoorTemp != null ? `<div><b>${t1(x.outdoorTemp)}</b><span class="mut sm">vonku</span></div>` : ""}
+        ${x.leavingWater != null && x.roomTemp != null ? `<div><b>${t1(x.leavingWater)}</b><span class="mut sm">voda</span></div>` : ""}</div>
+      ${x.modes.length > 1 ? `<div class="chips">${x.modes.map((m) => `<button class="mode ${m === x.mode ? "sel" : ""}" data-act="mode" data-v="${m}">${esc(MODE_LABEL[m] || m)}</button>`).join("")}</div>` : `<p class="sm mut">Režim: ${esc(MODE_LABEL[x.mode] || x.mode)}</p>`}
+      ${sps.map((s) => `<div class="stepper" data-path="${esc(s.path)}"><span>${esc(SP_LABEL[s.key] || s.key)}</span>
+        <div><button data-act="minus" aria-label="Znížiť">−</button><b>${s.key === "leavingWaterOffset" && s.value > 0 ? "+" : ""}${Number(s.value).toLocaleString("sk-SK", { maximumFractionDigits: 1 })}${s.key === "leavingWaterOffset" ? "" : " °C"}</b><button data-act="plus" aria-label="Zvýšiť">+</button></div></div>`).join("")}
+      ${x.powerful?.settable ? `<label class="radio"><input type="checkbox" data-act="boost" ${x.powerful.on ? "checked" : ""}><span>${x.kind === "voda" ? "Rýchly ohrev vody (boost)" : "Výkonný režim (powerful)"}</span></label>` : ""}
+    </div>`;
+  };
+  box.innerHTML = `
+    <div class="row" style="border:0;padding:0 0 12px;gap:8px"><span class="mut sm" style="flex:1">${age == null ? "" : age < 1 ? "Aktualizované práve teraz" : `Aktualizované pred ${age} min`}${heat.warning ? ` · ${esc(heat.warning)}` : ""}</span>
+      <button class="btn ghost sm" id="dkRef">Obnoviť</button></div>
+    ${items.length ? `<div class="hgrid">${items.map(card).join("")}</div>` : `<div class="card empty">V účte Onecta sa nenašlo žiadne zariadenie.</div>`}
+    <p class="mut sm" style="margin-top:16px">Daikin povoľuje 200 požiadaviek denne, preto sa údaje obnovujú najviac raz za 15 minút a zmena sa v zariadení prejaví do 1–2 minút.${heat.rate_remaining_day != null ? ` Dnes zostáva ${heat.rate_remaining_day}.` : ""}
+      Hlasom: v aplikácii Claude povedzte napr. „nastav kúrenie na 22 stupňov“.</p>
+    ${isAdmin() ? '<button class="linkbtn" id="dkOff">Odpojiť Daikin</button>' : ""}`;
+  document.getElementById("dkRef").onclick = async (e) => {
+    e.target.disabled = true;
+    try { heat = await daikinCall({ action: "status", force: true }); if (heat.fresh === false) toast("Údaje sú čerstvé – obnoviť sa dajú o pár minút"); renderHeat(); } catch (er) { toast(errText(er)); e.target.disabled = false; }
+  };
+  document.getElementById("dkOff")?.addEventListener("click", async () => {
+    if (!confirm("Odpojiť Daikin? Kúrenie sa potom nebude dať ovládať z Rodiny.")) return;
+    try { await daikinCall({ action: "disconnect" }); toast("Daikin odpojený"); viewKurenie(); } catch (er) { toast(errText(er)); }
+  });
+  const timers = {};
+  const send = async (x, characteristic, value, path) => {
+    try {
+      heat = await daikinCall({ action: "set", device: x.device, mp: x.mp, characteristic, value, path });
+      toast("Odoslané – zariadenie to prevezme do 1–2 minút");
+    } catch (er) { toast(errText(er)); }
+    renderHeat();
+  };
+  box.querySelectorAll(".hcard").forEach((c) => {
+    const x = items[Number(c.dataset.i)];
+    c.querySelector('[data-act="power"]')?.addEventListener("click", () => send(x, "onOffMode", x.on ? "off" : "on"));
+    c.querySelectorAll('[data-act="mode"]').forEach((b) => b.addEventListener("click", () => { if (b.dataset.v !== x.mode) send(x, "operationMode", b.dataset.v); }));
+    c.querySelector('[data-act="boost"]')?.addEventListener("change", (e) => send(x, "powerfulMode", e.target.checked ? "on" : "off"));
+    c.querySelectorAll(".stepper").forEach((st) => {
+      const sp = x.setpoints.find((s) => s.path === st.dataset.path);
+      const show = st.querySelector("b");
+      const step = (dir) => {
+        let v = Math.round((sp.value + dir * (sp.step || 0.5)) * 10) / 10;
+        if (sp.min != null) v = Math.max(sp.min, v); if (sp.max != null) v = Math.min(sp.max, v);
+        sp.value = v; show.textContent = `${sp.key === "leavingWaterOffset" && v > 0 ? "+" : ""}${v.toLocaleString("sk-SK", { maximumFractionDigits: 1 })}${sp.key === "leavingWaterOffset" ? "" : " °C"}`;
+        clearTimeout(timers[sp.path]); timers[sp.path] = setTimeout(() => send(x, "temperatureControl", v, sp.path), 1500); // pošle sa až po dokončení klikania
+      };
+      st.querySelector('[data-act="minus"]').onclick = () => step(-1);
+      st.querySelector('[data-act="plus"]').onclick = () => step(1);
+    });
+  });
 }
 
 /* ================= PRIPOMIENKY A POZNÁMKY ================= */
@@ -1579,9 +1697,9 @@ async function loadContext() {
 }
 
 /* ================= smerovanie ================= */
-const currentView = () => (location.hash.replace(/^#\/?/, "").split("/")[0] || "prehlad");
+const currentView = () => (location.hash.replace(/^#\/?/, "").replace(/\?.*$/, "").split("/")[0] || "prehlad");
 const currentSub = () => location.hash.replace(/^#\/?/, "").split("/")[1] || "";
-const VIEWS = { pripomienky: viewPripomienky, spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
+const VIEWS = { kurenie: viewKurenie, pripomienky: viewPripomienky, spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
 function route() {
   if (!S.user || !S.hid || !S.unlocked) return;
   closeSheet();

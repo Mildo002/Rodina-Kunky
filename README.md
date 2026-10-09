@@ -14,6 +14,9 @@ Spoločný prehľad celej domácnosti pre všetkých členov rodiny – na mobil
 - **Pripomienky** – rýchly zápis pripomienok, poznámok, receptov a nápadov, aj hlasom (diktovanie).
 - **Prepojenie s Claude** – po pridaní konektora stačí Claudovi povedať „pripomeň mi…“ alebo „ulož recept…“
   a zapíše to do Rodiny (Rodina → Prepojenie s Claude).
+- **Kúrenie / chladenie** – tepelné čerpadlo, klimatizácia a ohrev vody Daikin (cez Daikin Onecta):
+  teploty doma aj vonku, zapnúť / vypnúť, režim, nastavená teplota, rýchly ohrev. Ovládať sa dá aj hlasom
+  cez Claude („nastav kúrenie na 22 stupňov“).
 - **Nákupný zoznam** – spoločný, mení sa u všetkých naživo.
 - **Domácnosť** – zariadenia (záruka, servis), autá (STK, EK, známka, servis), poistenia
   (auto, osoby, životné, majetok) s ročným súčtom poistného.
@@ -41,6 +44,11 @@ Bezpečnosť stojí na pravidlách v databáze (Row Level Security) – každá 
    - Redirect URLs: tá istá adresa
 3. Supabase posiela potvrdzovacie e-maily iba v obmedzenom počte za hodinu. Pre ostrú prevádzku
    treba vlastný SMTP (napr. Resend) – Authentication → Emails → SMTP Settings.
+
+4. **Daikin** (pre dlaždicu Kúrenie / chladenie): na developer.cloud.daikineurope.com vytvoriť aplikáciu
+   s Redirect URI `https://tiadykirohlgabalkxyn.supabase.co/functions/v1/daikin/callback`, potom v Supabase →
+   Edge Functions → Secrets pridať `DAIKIN_CLIENT_ID` a `DAIKIN_CLIENT_SECRET`. V aplikácii Rodina → Kúrenie →
+   „Prepojiť s Daikin Onecta“ (správca rodiny).
 
 ## Čo príde neskôr
 
