@@ -1,0 +1,162 @@
+:root{
+  --paper:#f4f5fa; --card:#ffffff; --ink:#22204a; --mut:#5f6381; --line:#dde0eb;
+  --brand:#2b2860; --brand-ink:#ffffff; --sun:#f2b705; --sun-soft:#fff4cc;
+  --ok:#2e7d4f; --ok-soft:#e2f2e8; --warn:#a85f00; --warn-soft:#fcecd2; --bad:#c13a28; --bad-soft:#fbe2de;
+  --c-auto:#2f6fd6; --c-zdravie:#c2416b; --c-poistenie:#7a4fc9; --c-zariadenie:#16827a; --c-pripomienka:#b7791f;
+  --r-lg:16px; --r-md:11px;
+  --nav-h:64px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#141329; --card:#1f1d3b; --ink:#ecebfa; --mut:#a3a6c4; --line:#34325a;
+    --brand:#1f1d3b; --sun-soft:#3b3214; --ok-soft:#173a27; --warn-soft:#3d2c10; --bad-soft:#42201d;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:16px/1.5 "Source Sans 3",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.15;margin:0}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.01em}
+h2{font-size:1.25rem;font-weight:700}
+h3{font-size:1.05rem;font-weight:700}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+.boot{padding:40px 20px;text-align:center;color:var(--mut)}
+.mut{color:var(--mut)} .sm{font-size:.9rem}
+.hidden{display:none!important}
+
+/* ===== horná lišta ===== */
+.top{background:var(--brand);color:var(--brand-ink);padding:calc(10px + env(safe-area-inset-top)) 16px 14px;display:flex;align-items:center;gap:12px}
+.top .mark{width:38px;height:38px;border-radius:12px;background:var(--sun);color:#22204a;display:grid;place-items:center;font:800 1.2rem "Bricolage Grotesque",sans-serif;flex:none}
+.top .who{flex:1;min-width:0}
+.top .who b{display:block;font:700 1.15rem "Bricolage Grotesque",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .who small{display:block;opacity:.75;font-size:.85rem}
+.top select{background:transparent;color:inherit;border:0;font:700 1.15rem "Bricolage Grotesque",sans-serif;padding:0;max-width:100%;cursor:pointer}
+.top select option{color:#22204a}
+.iconbtn{background:rgba(255,255,255,.12);border:0;color:inherit;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;cursor:pointer;flex:none}
+.iconbtn svg{width:22px;height:22px}
+
+/* ===== obsah ===== */
+main{max-width:760px;margin:0 auto;padding:18px 16px calc(var(--nav-h) + 28px + env(safe-area-inset-bottom))}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 0 16px}
+.head p{margin:4px 0 0}
+section+section{margin-top:26px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px}
+.list{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line);min-height:56px}
+.row:first-child{border-top:0}
+button.row{width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;cursor:pointer}
+.list>button.row:first-child{border-top:0}
+button.row:hover{background:color-mix(in srgb,var(--paper) 60%,transparent)}
+.row .main{flex:1;min-width:0}
+.row .main b{display:block;font-weight:600;overflow-wrap:anywhere}
+.row .main span{display:block;color:var(--mut);font-size:.9rem}
+.empty{padding:22px 16px;color:var(--mut)}
+.empty b{display:block;color:var(--ink);margin-bottom:4px}
+
+/* kategória – farebný pásik */
+.tag{width:6px;align-self:stretch;border-radius:3px;flex:none;background:var(--mut)}
+.k-auto{--k:var(--c-auto)} .k-zdravie{--k:var(--c-zdravie)} .k-poistenie{--k:var(--c-poistenie)}
+.k-zariadenie{--k:var(--c-zariadenie)} .k-pripomienka{--k:var(--c-pripomienka)}
+.tag[class*="k-"]{background:var(--k)}
+
+/* stav termínu */
+.pill{display:inline-block;border-radius:99px;padding:2px 10px;font-size:.82rem;font-weight:700;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.plain{background:var(--paper);color:var(--mut)}
+
+/* ===== prehľad – agenda s veľkými dňami ===== */
+.agenda{display:grid;gap:10px}
+.day{display:grid;grid-template-columns:64px 1fr;gap:12px;align-items:start}
+.day .num{text-align:center;padding-top:6px}
+.day .num b{display:block;font:800 2.1rem/1 "Bricolage Grotesque",sans-serif}
+.day .num small{display:block;color:var(--mut);font-size:.82rem;margin-top:2px}
+.day.today .num b{color:var(--ink);background:var(--sun);border-radius:12px;padding:4px 0}
+.day.late .num b{color:var(--bad)}
+.stats{display:flex;gap:10px;overflow-x:auto;margin-bottom:18px;padding-bottom:2px}
+.stat{flex:1 0 140px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px 14px;text-decoration:none}
+.stat b{display:block;font:800 1.6rem/1.1 "Bricolage Grotesque",sans-serif}
+.stat span{color:var(--mut);font-size:.9rem}
+.stat.alert b{color:var(--bad)}
+
+/* ===== kalendár ===== */
+.cal-nav{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.cal-nav h2{flex:1;text-transform:none}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .dow{text-align:center;color:var(--mut);font-size:.8rem;padding:4px 0}
+.cal button{aspect-ratio:1/1;border:1px solid transparent;background:var(--card);border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;min-height:42px}
+.cal button.out{opacity:.35}
+.cal button.today{border-color:var(--sun);box-shadow:inset 0 0 0 1px var(--sun)}
+.cal button.sel{background:var(--brand);color:#fff}
+.dots{display:flex;gap:2px;height:6px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--k)}
+
+/* ===== nákup ===== */
+.add{display:flex;gap:8px;margin-bottom:14px}
+.add input{flex:1}
+.check{width:26px;height:26px;border-radius:8px;border:2px solid var(--line);flex:none;display:grid;place-items:center;background:var(--card);cursor:pointer;padding:0}
+.check.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.check svg{width:16px;height:16px}
+.row.done .main b{text-decoration:line-through;color:var(--mut)}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;color:var(--mut)}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--mut)}
+.live.on i{background:var(--ok)}
+
+/* ===== záložky ===== */
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px}
+.tabs button{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:8px 14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* ===== tlačidlá a formuláre ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:var(--r-md);padding:11px 16px;font-weight:700;cursor:pointer;background:var(--brand);color:#fff;text-decoration:none;min-height:44px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{background:var(--sun);color:#22204a}}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn.danger{background:transparent;color:var(--bad);border:1.5px solid var(--bad-soft)}
+.btn.wide{width:100%}
+.btn.sm{min-height:36px;padding:7px 12px;font-size:.92rem}
+.btn:disabled{opacity:.55;cursor:default}
+label.f{display:block;margin-bottom:12px;font-weight:600;font-size:.92rem}
+label.f>input,label.f>select,label.f>textarea{display:block;width:100%;margin-top:4px}
+input,select,textarea{border:1.5px solid var(--line);background:var(--card);border-radius:var(--r-md);padding:10px 12px;min-height:44px;width:100%}
+textarea{min-height:80px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:420px){.grid2{grid-template-columns:1fr}}
+.err{background:var(--bad-soft);color:var(--bad);border-radius:var(--r-md);padding:10px 12px;margin-bottom:12px;font-weight:600}
+.note{background:var(--sun-soft);border-radius:var(--r-md);padding:10px 12px;margin-bottom:12px}
+.radio{display:flex;gap:10px;align-items:flex-start;padding:10px 0;font-weight:600;cursor:pointer}
+.radio input{width:20px;min-height:20px;height:20px;margin-top:2px;flex:none}
+.radio span small{display:block;font-weight:400;color:var(--mut)}
+
+/* ===== prihlásenie ===== */
+.auth{min-height:100dvh;display:grid;place-items:center;padding:24px 16px;background:var(--brand)}
+.auth .box{width:100%;max-width:400px;background:var(--card);border-radius:22px;padding:26px 22px}
+.auth .logo{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.auth .logo .mark{width:52px;height:52px;border-radius:16px;background:var(--sun);color:#22204a;display:grid;place-items:center;font:800 1.6rem "Bricolage Grotesque",sans-serif}
+.auth .logo h1{font-size:2rem}
+.auth .switch{margin-top:14px;text-align:center}
+.linkbtn{background:none;border:0;color:var(--ink);text-decoration:underline;cursor:pointer;padding:4px;font-weight:600}
+
+/* ===== spodné menu ===== */
+nav.tabbar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom);z-index:10}
+nav.tabbar a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--nav-h);text-decoration:none;color:var(--mut);font-size:.78rem;font-weight:600}
+nav.tabbar a svg{width:24px;height:24px}
+nav.tabbar a.on{color:var(--ink)}
+nav.tabbar a.on svg{color:var(--ink);background:var(--sun);border-radius:10px;padding:2px;width:34px;height:28px}
+
+/* ===== spodný panel (formuláre) ===== */
+.scrim{position:fixed;inset:0;background:rgba(15,14,35,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--card);width:100%;max-width:560px;max-height:92dvh;overflow:auto;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+@media (min-width:700px){.scrim{align-items:center}.sheet{border-radius:22px}}
+.sheet .sh{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sheet .sh h2{flex:1}
+.sheet .actions{display:flex;gap:10px;margin-top:6px}
+.sheet .actions .btn{flex:1}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}}}
+
+#toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:12px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:30;max-width:90vw}
+#toast.show{opacity:1}
