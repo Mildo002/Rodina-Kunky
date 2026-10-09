@@ -186,6 +186,12 @@ async function setValue(hid: string, b: any) {
 }
 
 /* ---------- prepojenie (OAuth) ---------- */
+// diagnostika bez odhalenia hodnôt: začiatok odtlačku SHA-256 (rovnaký ako stĺpec DIGEST v Supabase) a dĺžka
+async function digest(v: string) {
+  const b = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)));
+  return [...b].slice(0, 4).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+console.log("Daikin údaje: ID", await digest(RAW_ID), RAW_ID.length, "znakov; SECRET", await digest(RAW_SECRET), RAW_SECRET.length, "znakov");
 async function start(hid: string, user: string) {
   if (!CLIENT_ID || !CLIENT_SECRET) throw new UserError("Údaje aplikácie Daikin ešte nie sú nastavené na serveri.");
   const state = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
