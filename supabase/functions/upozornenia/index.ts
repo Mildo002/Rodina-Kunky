@@ -6,7 +6,8 @@
 //                  denné pravidlá iba o 7:00 slovenského času
 //                  voliteľne "date":"RRRR-MM-DD", "now":"ISO čas", "dry":true (iba výpis), "force":true
 //   {"msg":id}    + x-cron-secret   → rýchla správa (nová / zmena stavu) – hneď všetkým členom okrem autora zmeny
-//   {"event":"nakup"|"pripomienka"|"poznamka", …} + x-cron-secret → nový záznam – hneď všetkým členom okrem autora
+//   {"event":"nakup"|"nakup-zmena"|"pripomienka"|"zdravie"|"poznamka", …} + x-cron-secret → nový / zmenený záznam
+//                  – hneď všetkým členom okrem autora (zdravie iba tým, ktorí smú vidieť záznamy osoby)
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
@@ -260,7 +261,7 @@ function whenText(ts: string | null) {
   const day = d === local ? "dnes" : d === addDays(local, 1) ? "zajtra" : fmt(d);
   return `${day} o ${p.hour}:${p.minute}`;
 }
-async function quickMessage(id: string, actor: string | null) {
+async function quickMessage(id: string, actor: string | null, edited = false) {
   const { data: m } = await db.from("quick_messages").select("*").eq("id", id).single();
   if (!m) return { sent: 0 };
   const { data: mem } = await db.from("members").select("user_id").eq("household_id", m.household_id);
@@ -281,13 +282,14 @@ async function quickMessage(id: string, actor: string | null) {
     vybavena: [`Vybavil(a) ${name(m.handled_by || actor)}`, detail].filter(Boolean).join(" · "),
     zrusena: [`Zrušil(a) ${name(actor || m.created_by)}`, detail].filter(Boolean).join(" · "),
   };
+  if (edited) { T[m.status] = `${name(actor || m.created_by)} upravil(a) správu: ${what}`; B[m.status] = detail || "Ťuknite pre detail."; }
   await vapidKeys();
   let sent = 0;
   for (const u of ids) {
     if (u === actor) continue;
-    const { error } = await db.from("notification_log").insert({ user_id: u, key: `sprava:${m.id}:${m.status}:${m.updated_at}` });
+    const { error } = await db.from("notification_log").insert({ user_id: u, key: `sprava:${m.id}:${m.status}:${m.updated_at}${edited ? ":uprava" : ""}` });
     if (error) continue; // už odoslané
-    sent += await pushToUser(u, { title: T[m.status], body: B[m.status], url: "/#/spravy", tag: `sprava-${m.id}`, important: m.status === "otvorena" });
+    sent += await pushToUser(u, { title: T[m.status], body: B[m.status], url: "/#/spravy", tag: `sprava-${m.id}`, important: m.status === "otvorena" && !edited });
   }
   return { sent };
 }
@@ -320,8 +322,43 @@ async function sendToOthers(ids: string[], actor: string | null, key: string, ms
   return sent;
 }
 const NOTE_KIND: Record<string, string> = { poznamka: "Nová poznámka", recept: "Nový recept", napad: "Nový nápad", ine: "Nový záznam" };
-async function activity(body: { event: string; id?: string; ids?: string[]; household?: string; actor?: string | null }) {
+type Activity = {
+  event: string; id?: string; ids?: string[]; household?: string; actor?: string | null;
+  op?: string; done?: boolean; moved?: boolean; bought?: string[]; edited?: string[];
+};
+const itemText = (x: { text: string; quantity: string | null }) => (x.quantity ? `${x.text} (${x.quantity})` : x.text);
+const listText = (t: string[]) => t.slice(0, 8).join(", ") + (t.length > 8 ? ` a ďalšie (${t.length - 8})` : "");
+const stamp = () => new Date().toISOString().slice(0, 19); // kľúč zmeny (každá úprava je nové upozornenie)
+async function activity(body: Activity) {
   const actor = body.actor || null;
+  if (body.event === "nakup-zmena") {
+    if (!body.household) return { sent: 0 };
+    const all = [...(body.bought || []), ...(body.edited || [])];
+    if (!all.length) return { sent: 0 };
+    const { ids, name } = await membersOf(body.household);
+    const { data: items } = await db.from("shopping_items").select("id,text,quantity").in("id", all);
+    const pick = (list?: string[]) => (items || []).filter((x) => (list || []).includes(x.id)).map(itemText);
+    let bought = pick(body.bought);
+    const edited = pick(body.edited);
+    if (bought.length && actor) {
+      // odškrtávanie po jednom: upozornenie ukáže všetko, čo autor kúpil za posledných 15 minút
+      const since = new Date(Date.now() - 15 * 60000).toISOString();
+      const { data: recent } = await db.from("shopping_items").select("text,quantity").eq("household_id", body.household)
+        .eq("checked", true).eq("checked_by", actor).gt("checked_at", since).order("checked_at");
+      if (recent?.length) bought = recent.map(itemText);
+    }
+    if (!bought.length && !edited.length) return { sent: 0 };
+    const who = name(actor);
+    const title = bought.length && edited.length ? `${who} upravil(a) nákupný zoznam`
+      : bought.length ? `${who} nakúpil(a)` : `${who} zmenil(a) položku nákupu`;
+    const text = [bought.length ? (edited.length ? `Kúpené: ${listText(bought)}` : listText(bought)) : "",
+      edited.length ? (bought.length ? `Zmenené: ${listText(edited)}` : listText(edited)) : ""].filter(Boolean).join(" · ");
+    return {
+      sent: await sendToOthers(ids, actor, `nakup-zmena:${body.household}:${all.sort().join(",")}:${stamp()}`, {
+        title, body: text, url: "/#/nakup", tag: `nakup-zmena-${body.household}-${actor || "x"}`,
+      }, `nakup-zmena:${body.household}:`),
+    };
+  }
   if (body.event === "nakup") {
     if (!body.household || !body.ids?.length) return { sent: 0 };
     const { ids, name } = await membersOf(body.household);
@@ -349,10 +386,38 @@ async function activity(body: { event: string; id?: string; ids?: string[]; hous
     const time = r.due_time ? ` o ${String(r.due_time).slice(0, 5)}` : "";
     let who = "";
     if (r.person_id) { const { data: p } = await db.from("persons").select("name").eq("id", r.person_id).single(); who = p?.name || ""; }
+    const upd = body.op === "update";
+    const by = name(actor || r.created_by);
+    const title = !upd ? `${by}: nová pripomienka` : body.done ? `${by} splnil(a): ${r.title}`
+      : body.moved ? `${by} presunul(a) termín` : `${by} upravil(a) pripomienku`;
     return {
-      sent: await sendToOthers(ids, actor, `nova-pripomienka:${r.id}`, {
-        title: `${name(actor || r.created_by)}: nová pripomienka`, body: [r.title, `${day}${time}`, who].filter(Boolean).join(" · "),
-        url: "/#/pripomienky", tag: `nova-pripomienka-${r.id}`,
+      sent: await sendToOthers(ids, actor, upd ? `zmena-pripomienky:${r.id}:${stamp()}` : `nova-pripomienka:${r.id}`, {
+        title, body: (body.done ? [`${day}${time}`, who] : [r.title, `${day}${time}`, who]).filter(Boolean).join(" · "),
+        url: "/#/kalendar", tag: `pripomienka-zmena-${r.id}`,
+      }),
+    };
+  }
+  if (body.event === "zdravie" && body.id) {
+    const { data: v } = await db.from("health_visits").select("*").eq("id", body.id).single();
+    if (!v) return { sent: 0 };
+    const [mem, per] = await Promise.all([
+      db.from("members").select("user_id,role").eq("household_id", v.household_id),
+      db.from("persons").select("id,name,user_id,health_visibility,health_viewer_ids").eq("id", v.person_id).single(),
+    ]);
+    const p = per.data as Person | null;
+    if (!p) return { sent: 0 };
+    const admins = new Set((mem.data || []).filter((m) => m.role === "spravca").map((m) => m.user_id as string));
+    const allowed = (mem.data || []).map((m) => m.user_id as string).filter((u) => canSeeHealth(p, u, admins)); // súkromie zdravia
+    const { name } = await membersOf(v.household_id);
+    const local = localNow().date;
+    const day = v.visit_on === local ? "dnes" : v.visit_on === addDays(local, 1) ? "zajtra" : fmt(v.visit_on);
+    const when = `${day}${v.visit_time ? ` o ${String(v.visit_time).slice(0, 5)}` : ""}`;
+    const upd = body.op === "update", by = name(actor || v.created_by);
+    const title = !upd ? `${by}: nový termín u lekára – ${p.name}` : body.done ? `Lekár vybavený: ${p.name}`
+      : body.moved ? `Zmena termínu u lekára: ${p.name}` : `Upravená návšteva lekára: ${p.name}`;
+    return {
+      sent: await sendToOthers(allowed, actor, upd ? `zmena-zdravie:${v.id}:${stamp()}` : `nove-zdravie:${v.id}`, {
+        title, body: [v.title, when, v.doctor, v.place].filter(Boolean).join(" · "), url: "/#/zdravie", tag: `zdravie-${v.id}`,
       }),
     };
   }
@@ -403,7 +468,7 @@ Deno.serve(async (req) => {
     if (body.msg) {
       const { data } = await db.from("app_secrets").select("value").eq("key", "cron").single();
       if (!data || req.headers.get("x-cron-secret") !== data.value) return json({ error: "Neoprávnený prístup" }, 401);
-      return json(await quickMessage(body.msg, body.actor || null));
+      return json(await quickMessage(body.msg, body.actor || null, !!body.edited));
     }
 
     if (body.event) {

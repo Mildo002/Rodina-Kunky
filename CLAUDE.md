@@ -37,6 +37,11 @@
   `notify_reminder`, `notify_note` (súkromné nie) volajú `call_upozornenia()` → `{"event":"nakup"|"pripomienka"|"poznamka",…}`;
   upozornenie dostanú všetci okrem autora. Nákup: ďalšie položky do 3 min iba potichu aktualizujú to isté upozornenie (`quiet`).
   Autor (`added_by` / `created_by`) sa pri vložení z aplikácie vždy prepíše na `auth.uid()` (trigger `force_author`).
+- Zmeny (migrácia 0015): `notify_shopping_change` (úprava položky / nakúpené, transition tables → `nakup-zmena`),
+  `notify_reminder` aj pri UPDATE (`op`, `done`, `moved`), nové `notify_health` (`event: zdravie`, príjemcovia iba
+  podľa `canSeeHealth`), `notify_quick_message` aj pri úprave textu / času / miesta (`edited`). Úpravy autora do 2 min
+  po vytvorení sa neohlasujú. Číslo na ikone = počet riadkov `notification_log` od `profiles.last_seen_at`.
+- iPhone: web push iba z ikony na ploche (v Safari `PushManager` neexistuje) – prehľad to hlási, kým nie je v poriadku.
 - Aplikácia pri každom otvorení zavolá `syncPush()` – ak má zariadenie povolené upozornenia, odber znova zapíše do
   `push_subscriptions` (odber zmizne napr. po odhlásení). Vypnutie na zariadení si pamätá `rodina_push_off`.
 - AI čítanie dokladov: edge funkcia `citat-doklad` (verify_jwt zapnuté + kontrola členstva), Claude vision

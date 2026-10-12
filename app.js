@@ -637,15 +637,31 @@ async function fillHeatTile() {
     el.textContent = parts.join(" · ") || `${it.length} ${plural(it.length, "zariadenie", "zariadenia", "zariadení")}`;
   } catch {}
 }
+/* Výzva na prehľade: bez upozornení appka nikoho neupozorní – „Teraz nie“ ju skryje iba na 3 dni */
 async function askForPush() {
   const box = document.getElementById("pushAsk");
-  if (!box || store.get("rodina_push_ask") === "nie") return;
+  if (!box) return;
+  const later = Number(store.get("rodina_push_ask_until") || 0);
+  if (later > Date.now()) return;
   const st = await pushState();
-  if (st !== "off" && !(st === "unsupported" && isIOS && !isStandalone())) return;
-  box.innerHTML = `<div class="card note-card"><b>Chcete, aby vám aplikácia pripomínala termíny?</b>
-    <p class="mut sm">Pripomienky v čase, ktorý si nastavíte, lekár deň vopred, platby poistenia, STK, známka…</p>
-    <div class="row" style="border:0;padding:0;gap:8px;flex-wrap:wrap"><a class="btn sm" href="#/rodina">Nastaviť upozornenia</a><button class="btn ghost sm" id="pLater">Teraz nie</button></div></div>`;
-  box.querySelector("#pLater").onclick = () => { store.set("rodina_push_ask", "nie"); box.innerHTML = ""; };
+  const iosBrowser = isIOS && !isStandalone();
+  if (st !== "off" && !iosBrowser) return;
+  const laterBtn = `<button class="btn ghost sm" id="pLater">Teraz nie</button>`;
+  box.innerHTML = iosBrowser
+    ? `<div class="card note-card"><b>Upozornenia na iPhone fungujú iba z ikony na ploche</b>
+      <p class="mut sm">Teraz máte Rodinu otvorenú v Safari – tu iPhone upozornenia ani číslo na ikone nedovolí.
+      V Safari klepnite na <b>Zdieľať</b> (štvorec so šípkou) → <b>Pridať na plochu</b>, potom Rodinu otvárajte
+      <b>iba z novej ikony</b> a zapnite upozornenia.</p><div class="row" style="border:0;padding:0">${laterBtn}</div></div>`
+    : `<div class="card note-card"><b>Upozornenia sú na tomto zariadení vypnuté</b>
+      <p class="mut sm">Bez nich vás appka neupozorní na nákup, rýchle správy, termíny ani lekára – ani na zamknutej obrazovke.</p>
+      <div class="row" style="border:0;padding:0;gap:8px;flex-wrap:wrap"><button class="btn sm" id="pOnNow">Zapnúť upozornenia</button>${laterBtn}</div></div>`;
+  box.querySelector("#pLater").onclick = () => { store.set("rodina_push_ask_until", String(Date.now() + 3 * 86400000)); box.innerHTML = ""; };
+  const on = box.querySelector("#pOnNow");
+  if (on) on.onclick = async () => {
+    on.disabled = true; on.textContent = "Zapínam…";
+    try { await enablePush(); store.set("rodina_push_off", null); toast("Upozornenia zapnuté"); box.innerHTML = ""; }
+    catch (er) { toast(errText(er)); on.disabled = false; on.textContent = "Zapnúť upozornenia"; }
+  };
 }
 function newVisit(date) {
   const visible = S.persons.filter(canSeeHealth);
@@ -1276,10 +1292,18 @@ async function enablePush() {
   let key = (await sb.from("app_config").select("value").eq("key", "vapid_public").maybeSingle()).data?.value;
   if (!key) key = (await sb.functions.invoke("upozornenia", { body: { vapid: true } })).data?.publicKey;
   if (!key) throw new Error("Server upozornení neodpovedá. Skúste to neskôr.");
-  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) }));
-  const j = sub.toJSON();
-  const { error } = await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
-  if (error) throw error;
+  const save = async (s) => { const j = s.toJSON(); return (await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" })).error; };
+  let sub = await reg.pushManager.getSubscription();
+  const cur = sub?.options?.applicationServerKey;
+  if (sub && cur && b64urlOf(new Uint8Array(cur)) !== key) { await sub.unsubscribe(); sub = null; }
+  sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+  if (await save(sub)) {
+    // odber patrí inému účtu na tomto zariadení → vytvoriť nový
+    await sub.unsubscribe().catch(() => {});
+    const err = await save(await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) }));
+    if (err) throw err;
+  }
+  pushSynced = true;
 }
 /* Zariadenie má odber, ale server ho nepozná (odhlásenie, obnovený odber v prehliadači, iný účet…)
    → pri otvorení aplikácie ho potichu znova zapíše, aby upozornenia od rodiny naozaj chodili. */
@@ -1301,7 +1325,15 @@ async function syncPush() {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
     }
     const j = sub.toJSON();
-    await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
+    const { error } = await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
+    if (error) {
+      // odber patrí inému účtu (iný člen sa prihlásil na tom istom zariadení) → nový odber pre tento účet
+      await sub.unsubscribe().catch(() => {});
+      const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+      const f = fresh.toJSON();
+      const r2 = await sb.from("push_subscriptions").upsert({ endpoint: f.endpoint, p256dh: f.keys.p256dh, auth: f.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
+      if (r2.error) throw r2.error;
+    }
   } catch (e) { pushSynced = false; console.warn("push sync", e); }
 }
 function b64urlOf(u8) { return btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
@@ -1311,7 +1343,12 @@ async function disablePush() {
   const sub = await reg?.pushManager.getSubscription();
   if (sub) { await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
 }
-const PUSH_RULES = `<ul class="rules">
+const PUSH_RULES = `<p class="mut sm" style="margin:8px 0 2px"><b>Hneď, keď niekto v rodine niečo pridá alebo zmení:</b></p><ul class="rules">
+  <li><b>Nákupný zoznam</b> – nová položka, úprava, nakúpené</li>
+  <li><b>Rýchle správy</b> – nová správa, úprava, prevzaté / vybavené</li>
+  <li><b>Kalendár a termíny</b> – nová pripomienka, presun termínu, splnené</li>
+  <li><b>Zdravie</b> – nová alebo zmenená návšteva lekára (iba tým, ktorí smú vidieť záznamy)</li>
+</ul><p class="mut sm" style="margin:8px 0 2px"><b>Pripomenutie termínov:</b></p><ul class="rules">
   <li><b>Lekár</b> – jeden pracovný deň vopred</li>
   <li><b>Platba poistenia</b> – 20. deň v mesiaci pred splatnosťou</li>
   <li><b>Pripomienky</b> – v čase, ktorý si pri pripomienke nastavíte (napr. 2 hodiny vopred)</li>
@@ -1320,7 +1357,7 @@ const PUSH_RULES = `<ul class="rules">
   <li><b>Koniec poistenia</b> – 3 mesiace vopred</li>
   <li><b>Koniec záruky</b> – 30 dní vopred, <b>servis</b> – 7 dní vopred</li>
 </ul><p class="mut sm">Pripomienky a známky chodia v presnom čase, ostatné upozornenia ráno o 7:00 – na všetky zariadenia, kde ich zapnete.
-  Zobrazia sa aj na zamknutej obrazovke a na ikone aplikácie uvidíte počet nových.${isIOS ? " Na iPhone to skontrolujte v Nastavenia → Upozornenia → Rodina: zapnite Zamknutá obrazovka a Odznaky." : ""}</p>`;
+  Zobrazia sa aj na zamknutej obrazovke a na ikone aplikácie uvidíte počet nových.${isIOS ? " Na iPhone to skontrolujte v Nastavenia → Upozornenia → Rodina: zapnite Povoliť upozornenia, Zamknutá obrazovka, Bannery a Odznaky." : ""}</p>`;
 async function renderPushCard(box) {
   if (!box) return;
   const st = await pushState();
@@ -1338,6 +1375,16 @@ async function renderPushCard(box) {
       try { await enablePush(); store.set("rodina_push_off", null); toast("Upozornenia zapnuté"); } catch (er) { toast(errText(er)); }
       renderPushCard(box);
     };
+    return;
+  }
+  // zariadenie má odber – overiť, že ho pozná aj server (inak by upozornenia nechodili)
+  try {
+    const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+    const { data: known } = await sb.from("push_subscriptions").select("id").eq("endpoint", sub?.endpoint || "").maybeSingle();
+    if (!known) await enablePush();
+  } catch (er) {
+    set(`<b>Upozornenia sa nepodarilo zapísať na server</b><p class="err">${esc(errText(er))}</p><button class="btn ghost" id="pRetry">Skúsiť znova</button>`);
+    box.querySelector("#pRetry").onclick = () => renderPushCard(box);
     return;
   }
   set(`<b>Upozornenia sú zapnuté na tomto zariadení</b>${PUSH_RULES}
