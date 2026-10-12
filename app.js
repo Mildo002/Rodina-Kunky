@@ -99,6 +99,7 @@ const ICON = {
   drop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11z"/></svg>',
   power: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>',
   face: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>',
+  scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg>',
@@ -130,7 +131,7 @@ const FORMS = {
     ],
   }),
   vehicle: () => ({
-    table: "vehicles", title: "Auto", fields: [
+    table: "vehicles", title: "Auto", scan: "vehicle", fields: [
       { k: "name", l: "Názov", req: true, ph: "napr. Škoda Octavia" },
       { k: "plate", l: "EČV", half: true }, { k: "year_made", l: "Rok výroby", t: "number", half: true },
       { k: "make", l: "Značka", half: true }, { k: "model", l: "Model", half: true },
@@ -142,7 +143,7 @@ const FORMS = {
     ],
   }),
   insurance: (vehicles = []) => ({
-    table: "insurances", title: "Poistenie", fields: [
+    table: "insurances", title: "Poistenie", scan: "insurance", fields: [
       { k: "kind", l: "Druh poistenia", t: "select", req: true, opts: Object.entries(KIND_LABEL) },
       { k: "name", l: "Názov", req: true, ph: "napr. PZP Octavia" },
       { k: "insurer", l: "Poisťovňa", half: true }, { k: "policy_no", l: "Číslo zmluvy", half: true },
@@ -150,7 +151,8 @@ const FORMS = {
       { k: "vehicle_id", l: "Auto", t: "select", opts: [["", "—"], ...vehicles.map((v) => [v.id, v.name])], half: true },
       { k: "premium", l: "Poistné (€)", t: "number", step: "0.01", half: true },
       { k: "frequency", l: "Platí sa", t: "select", opts: [["", "—"], ...FREQ], half: true },
-      { k: "next_payment_on", l: "Najbližšia platba", t: "date", half: true }, { k: "valid_until", l: "Platí do", t: "date", half: true },
+      { k: "next_payment_on", l: "Najbližšia platba", t: "date" },
+      { k: "valid_from", l: "Platí od", t: "date", half: true }, { k: "valid_until", l: "Platí do", t: "date", half: true },
       { k: "note", l: "Poznámka", t: "textarea" },
     ],
   }),
@@ -224,15 +226,85 @@ function readForm(form, fields) {
   }
   return o;
 }
+/* ================= AI čítanie dokladov (technický preukaz, poistná zmluva) ================= */
+const SCAN_TEXT = {
+  vehicle: { btn: "Načítať z technického preukazu", hint: "Odfoťte alebo nahrajte technický preukaz (obe strany môžete naraz). AI prepíše EČV, VIN, značku, model a rok." },
+  insurance: { btn: "Načítať z poistnej zmluvy", hint: "Odfoťte alebo nahrajte zmluvu, zelenú kartu či potvrdenie (aj viac strán, alebo PDF). AI prepíše poisťovňu, číslo zmluvy, poistné a dátumy." },
+};
+function scanHtml(kind) {
+  const t = SCAN_TEXT[kind];
+  return `<div class="scanbox"><div class="scan-row">
+      <label class="btn ghost scanbtn">${ICON.scan}<span>${esc(t.btn)}</span>
+        <input type="file" accept="image/*,application/pdf" multiple data-scan hidden></label>
+    </div><p class="mut sm scan-msg">${esc(t.hint)}</p></div>`;
+}
+const blobB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+/** Fotka → JPEG max. 2000 px (aj HEIC z iPhonu, ak ho prehliadač vie otvoriť); PDF ostane. */
+async function scanFile(f) {
+  if (f.type === "application/pdf") {
+    if (f.size > 5 * 1024 * 1024) throw new Error("PDF je väčšie ako 5 MB.");
+    return { mime: "application/pdf", data: await blobB64(f) };
+  }
+  let bmp;
+  try { bmp = await createImageBitmap(f); } catch { throw new Error(`Súbor ${f.name} sa nedá otvoriť. Použite fotku JPG/PNG alebo PDF.`); }
+  const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.86));
+  if (!blob) throw new Error("Fotku sa nepodarilo spracovať.");
+  return { mime: "image/jpeg", data: await blobB64(blob) };
+}
+function bindScan(el, def) {
+  const input = el.querySelector("[data-scan]"); if (!input) return;
+  const msg = el.querySelector(".scan-msg"), lbl = el.querySelector(".scanbtn"), form = el.querySelector("form");
+  input.addEventListener("change", async () => {
+    const files = [...input.files].slice(0, 4); input.value = "";
+    if (!files.length) return;
+    lbl.classList.add("busy"); lbl.querySelector("span").textContent = "Čítam doklad…";
+    msg.className = "mut sm scan-msg"; msg.textContent = "Môže to trvať 10–20 sekúnd.";
+    try {
+      const prepared = [];
+      for (const f of files) prepared.push(await scanFile(f));
+      const { data, error } = await sb.functions.invoke("citat-doklad", { body: { household_id: S.hid, kind: def.scan, files: prepared } });
+      if (error) {
+        let m = error.message; try { m = (await error.context?.json())?.error || m; } catch {}
+        throw new Error(m);
+      }
+      const f = data?.fields || {};
+      let n = 0;
+      form.querySelectorAll(".ai-filled").forEach((x) => x.classList.remove("ai-filled"));
+      for (const fd of def.fields) {
+        const v = f[fd.k]; if (v == null || v === "") continue;
+        const inp = form.elements[fd.k]; if (!inp) continue;
+        if (inp.tagName === "SELECT" && ![...inp.options].some((o) => o.value === String(v))) continue;
+        inp.value = String(v); inp.closest("label")?.classList.add("ai-filled"); n++;
+      }
+      const extra = [f.insured_person && !f.person_id ? `poistená osoba: ${f.insured_person}` : "", f.vehicle_plate && !f.vehicle_id ? `EČV: ${f.vehicle_plate}` : ""].filter(Boolean).join(", ");
+      if (n) {
+        msg.className = "sm scan-msg ok";
+        msg.textContent = `Vyplnené ${n} ${plural(n, "pole", "polia", "polí")}${f.doklad ? ` (${f.doklad})` : ""}. Skontrolujte ich pred uložením${extra ? ` – nenašiel som v rodine ${extra}` : ""}.`;
+      } else {
+        msg.className = "sm scan-msg bad";
+        msg.textContent = `Z dokladu sa nepodarilo nič prečítať${f.doklad ? ` (${f.doklad})` : ""}. Skúste ostrejšiu fotku pri dobrom svetle.`;
+      }
+    } catch (e) {
+      msg.className = "sm scan-msg bad"; msg.textContent = errText(e);
+    } finally {
+      lbl.classList.remove("busy"); lbl.querySelector("span").textContent = SCAN_TEXT[def.scan].btn;
+    }
+  });
+}
+
 /** Formulár na pridanie / úpravu záznamu v tabuľke. */
 function editRecord(def, row = {}, after) {
   const isNew = !row.id;
   openSheet((isNew ? "Pridať: " : "Upraviť: ") + def.title.toLowerCase(),
-    `<form novalidate><div class="err hidden"></div>${formHtml(def.fields, row)}
+    `<form novalidate>${def.scan ? scanHtml(def.scan) : ""}<div class="err hidden"></div>${formHtml(def.fields, row)}
       <div class="actions">${isNew ? "" : '<button type="button" class="btn danger" data-del>Odstrániť</button>'}
       <button class="btn">${isNew ? "Pridať" : "Uložiť"}</button></div></form>`,
     (el) => {
       const form = el.querySelector("form"), err = el.querySelector(".err");
+      if (def.scan) bindScan(el, def);
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const missing = def.fields.filter((f) => f.req && !String(new FormData(form).get(f.k) || "").trim());
@@ -1193,6 +1265,30 @@ async function enablePush() {
   const { error } = await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
   if (error) throw error;
 }
+/* Zariadenie má odber, ale server ho nepozná (odhlásenie, obnovený odber v prehliadači, iný účet…)
+   → pri otvorení aplikácie ho potichu znova zapíše, aby upozornenia od rodiny naozaj chodili. */
+let pushSynced = false;
+async function syncPush() {
+  if (pushSynced || !S.user || !pushSupported() || Notification.permission !== "granted") return;
+  pushSynced = true;
+  try {
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    let key = (await sb.from("app_config").select("value").eq("key", "vapid_public").maybeSingle()).data?.value;
+    if (!key) return;
+    let sub = await reg.pushManager.getSubscription();
+    // odber vytvorený so starým kľúčom servera treba obnoviť
+    const cur = sub?.options?.applicationServerKey;
+    if (sub && cur && b64urlOf(new Uint8Array(cur)) !== key) { await sub.unsubscribe(); sub = null; }
+    if (!sub) {
+      if (store.get("rodina_push_off") === "1") return; // používateľ ich na tomto zariadení vypol
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+    }
+    const j = sub.toJSON();
+    await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, device: deviceName() }, { onConflict: "endpoint" });
+  } catch (e) { pushSynced = false; console.warn("push sync", e); }
+}
+function b64urlOf(u8) { return btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
 async function disablePush() {
   if (!pushSupported()) return;
   const reg = await navigator.serviceWorker.getRegistration();
@@ -1223,7 +1319,7 @@ async function renderPushCard(box) {
     set(`<b>Upozornenia sú na tomto zariadení vypnuté</b>${PUSH_RULES}<button class="btn wide" id="pOn">Zapnúť upozornenia</button>`);
     box.querySelector("#pOn").onclick = async (e) => {
       e.target.disabled = true; e.target.textContent = "Zapínam…";
-      try { await enablePush(); toast("Upozornenia zapnuté"); } catch (er) { toast(errText(er)); }
+      try { await enablePush(); store.set("rodina_push_off", null); toast("Upozornenia zapnuté"); } catch (er) { toast(errText(er)); }
       renderPushCard(box);
     };
     return;
@@ -1234,7 +1330,7 @@ async function renderPushCard(box) {
     const { data, error } = await sb.functions.invoke("upozornenia", { body: { test: true } });
     toast(error ? errText(error) : data?.sent ? "Odoslané – o chvíľu príde" : "Nepodarilo sa doručiť, skúste vypnúť a znova zapnúť");
   };
-  box.querySelector("#pOff").onclick = async () => { await disablePush(); toast("Upozornenia vypnuté"); renderPushCard(box); };
+  box.querySelector("#pOff").onclick = async () => { store.set("rodina_push_off", "1"); await disablePush(); toast("Upozornenia vypnuté"); renderPushCard(box); };
 }
 
 /* Aplikácia otvorená → vynulovať číslo na ikone a upratať zobrazené upozornenia */
@@ -1706,6 +1802,7 @@ function route() {
   const v = currentView();
   if (v === "domacnost" && currentSub()) S.homeTab = currentSub();
   markSeen();
+  syncPush();
   (VIEWS[v] || viewPrehlad)();
   window.scrollTo(0, 0);
 }

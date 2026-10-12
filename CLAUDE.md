@@ -33,6 +33,16 @@
 - Test funkcie z databázy cez `net.http_post` s hlavičkou `x-cron-secret` z `app_secrets`, `{"run":true,"dry":true,"date":"…"}`.
 - Rýchle správy (`quick_messages`): trigger `notify_quick_message` volá funkciu cez pg_net hneď pri vložení / zmene stavu
   (`{"msg":id,"actor":uid}`), upozornenie dostanú všetci členovia okrem autora zmeny.
+- Nové záznamy (migrácia 0013): triggery `notify_shopping` (jedno volanie na celé vloženie, transition table),
+  `notify_reminder`, `notify_note` (súkromné nie) volajú `call_upozornenia()` → `{"event":"nakup"|"pripomienka"|"poznamka",…}`;
+  upozornenie dostanú všetci okrem autora. Nákup: ďalšie položky do 3 min iba potichu aktualizujú to isté upozornenie (`quiet`).
+  Autor (`added_by` / `created_by`) sa pri vložení z aplikácie vždy prepíše na `auth.uid()` (trigger `force_author`).
+- Aplikácia pri každom otvorení zavolá `syncPush()` – ak má zariadenie povolené upozornenia, odber znova zapíše do
+  `push_subscriptions` (odber zmizne napr. po odhlásení). Vypnutie na zariadení si pamätá `rodina_push_off`.
+- AI čítanie dokladov: edge funkcia `citat-doklad` (verify_jwt zapnuté + kontrola členstva), Claude vision
+  (`claude-sonnet-5-5`, tool use). Formuláre Auto (technický preukaz) a Poistenie (zmluva) majú `scan` → tlačidlo hore.
+  Nič neukladá, iba vráti návrh polí. Limit 40/deň/používateľ, 120/deň/rodina (`ai_usage`, iba server).
+  Tajomstvo `ANTHROPIC_API_KEY` v Supabase (Edge Functions → Secrets) zadáva majiteľ.
 - Pripomienky: sekcia `#/pripomienky` – rýchly zápis (aj diktovanie), s dátumom ide do `reminders`, inak do `notes`
   (recept / poznámka / nápad, súkromné vidí iba autor).
 - Konektor pre Claude: edge funkcia `rodina-mcp` (MCP cez HTTP, JSON-RPC, verify_jwt vypnuté). Kľúč v URL

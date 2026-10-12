@@ -6,6 +6,7 @@
 //                  denné pravidlá iba o 7:00 slovenského času
 //                  voliteľne "date":"RRRR-MM-DD", "now":"ISO čas", "dry":true (iba výpis), "force":true
 //   {"msg":id}    + x-cron-secret   → rýchla správa (nová / zmena stavu) – hneď všetkým členom okrem autora zmeny
+//   {"event":"nakup"|"pripomienka"|"poznamka", …} + x-cron-secret → nový záznam – hneď všetkým členom okrem autora
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
@@ -82,7 +83,7 @@ async function vapidKeys() {
 }
 
 /* ---------- odoslanie ---------- */
-type Msg = { title: string; body: string; url?: string; tag?: string; important?: boolean };
+type Msg = { title: string; body: string; url?: string; tag?: string; important?: boolean; quiet?: boolean };
 /* Počet neprečítaných upozornení (od posledného otvorenia aplikácie) – číslo na ikone */
 async function unread(userId: string) {
   const { data: p } = await db.from("profiles").select("last_seen_at").eq("id", userId).single();
@@ -291,6 +292,86 @@ async function quickMessage(id: string, actor: string | null) {
   return { sent };
 }
 
+/* ---------- nové záznamy (nákup, pripomienka, poznámka) ---------- */
+async function membersOf(hid: string) {
+  const { data: mem } = await db.from("members").select("user_id").eq("household_id", hid);
+  const ids = (mem || []).map((x) => x.user_id as string);
+  const { data: profs } = await db.from("profiles").select("id,full_name,email").in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  const name = (u: string | null) => { const p = (profs || []).find((x) => x.id === u); return (p?.full_name || p?.email || "Niekto").split(" ")[0]; };
+  return { ids, name };
+}
+async function sendToOthers(ids: string[], actor: string | null, key: string, msg: Msg, quietKeyPrefix?: string) {
+  await vapidKeys();
+  let sent = 0;
+  for (const u of ids) {
+    if (u === actor) continue;
+    let quiet = false;
+    if (quietKeyPrefix) {
+      // viac položiek za sebou: prvá zazvoní, ďalšie do 3 minút iba potichu aktualizujú to isté upozornenie
+      const since = new Date(Date.now() - 3 * 60000).toISOString();
+      const { count } = await db.from("notification_log").select("key", { count: "exact", head: true })
+        .eq("user_id", u).like("key", `${quietKeyPrefix}%`).gt("sent_at", since);
+      quiet = (count || 0) > 0;
+    }
+    const { error } = await db.from("notification_log").insert({ user_id: u, key });
+    if (error) continue; // už odoslané
+    sent += await pushToUser(u, { ...msg, quiet });
+  }
+  return sent;
+}
+const NOTE_KIND: Record<string, string> = { poznamka: "Nová poznámka", recept: "Nový recept", napad: "Nový nápad", ine: "Nový záznam" };
+async function activity(body: { event: string; id?: string; ids?: string[]; household?: string; actor?: string | null }) {
+  const actor = body.actor || null;
+  if (body.event === "nakup") {
+    if (!body.household || !body.ids?.length) return { sent: 0 };
+    const { ids, name } = await membersOf(body.household);
+    // všetky nevybavené položky, ktoré autor pridal za posledných 15 minút (aktualizované jedno upozornenie)
+    const since = new Date(Date.now() - 15 * 60000).toISOString();
+    let q = db.from("shopping_items").select("id,text,quantity").eq("household_id", body.household).eq("checked", false).gt("created_at", since).order("created_at");
+    q = actor ? q.eq("added_by", actor) : q.in("id", body.ids);
+    const { data: items } = await q;
+    const list = (items || []).length ? items! : [];
+    if (!list.length) return { sent: 0 };
+    const txt = list.map((x) => x.quantity ? `${x.text} (${x.quantity})` : x.text);
+    const shown = txt.slice(0, 8).join(", ") + (txt.length > 8 ? ` a ďalšie (${txt.length - 8})` : "");
+    return {
+      sent: await sendToOthers(ids, actor, `nakup:${body.household}:${body.ids.sort().join(",")}`, {
+        title: `${name(actor)} pridal(a) na nákup`, body: shown, url: "/#/nakup", tag: `nakup-${body.household}-${actor || "x"}`,
+      }, `nakup:${body.household}:`),
+    };
+  }
+  if (body.event === "pripomienka" && body.id) {
+    const { data: r } = await db.from("reminders").select("*").eq("id", body.id).single();
+    if (!r) return { sent: 0 };
+    const { ids, name } = await membersOf(r.household_id);
+    const local = localNow().date;
+    const day = r.due_on === local ? "dnes" : r.due_on === addDays(local, 1) ? "zajtra" : fmt(r.due_on);
+    const time = r.due_time ? ` o ${String(r.due_time).slice(0, 5)}` : "";
+    let who = "";
+    if (r.person_id) { const { data: p } = await db.from("persons").select("name").eq("id", r.person_id).single(); who = p?.name || ""; }
+    return {
+      sent: await sendToOthers(ids, actor, `nova-pripomienka:${r.id}`, {
+        title: `${name(actor || r.created_by)}: nová pripomienka`, body: [r.title, `${day}${time}`, who].filter(Boolean).join(" · "),
+        url: "/#/pripomienky", tag: `nova-pripomienka-${r.id}`,
+      }),
+    };
+  }
+  if (body.event === "poznamka" && body.id) {
+    const { data: n } = await db.from("notes").select("*").eq("id", body.id).single();
+    if (!n || n.private) return { sent: 0 };
+    const { ids, name } = await membersOf(n.household_id);
+    const preview = (n.body || "").replace(/\s+/g, " ").trim();
+    return {
+      sent: await sendToOthers(ids, actor, `nova-poznamka:${n.id}`, {
+        title: `${name(actor || n.created_by)}: ${NOTE_KIND[n.category] || "Nový záznam"}`,
+        body: [n.title, preview.length > 90 ? preview.slice(0, 90) + "…" : preview].filter(Boolean).join(" – "),
+        url: "/#/pripomienky", tag: `nova-poznamka-${n.id}`,
+      }),
+    };
+  }
+  return { sent: 0 };
+}
+
 async function run(today: string, dry: boolean, daily: boolean, nowIso: string) {
   const items = [...(daily ? await itemsFor(today, dry) : []), ...(await reminderItems(nowIso)), ...(await vignetteItems(nowIso))];
   if (dry) return { date: today, items: items.map((i) => ({ title: i.title, body: i.body, recipients: i.users.length, key: i.key })) };
@@ -323,6 +404,12 @@ Deno.serve(async (req) => {
       const { data } = await db.from("app_secrets").select("value").eq("key", "cron").single();
       if (!data || req.headers.get("x-cron-secret") !== data.value) return json({ error: "Neoprávnený prístup" }, 401);
       return json(await quickMessage(body.msg, body.actor || null));
+    }
+
+    if (body.event) {
+      const { data } = await db.from("app_secrets").select("value").eq("key", "cron").single();
+      if (!data || req.headers.get("x-cron-secret") !== data.value) return json({ error: "Neoprávnený prístup" }, 401);
+      return json(await activity(body));
     }
 
     if (body.run) {

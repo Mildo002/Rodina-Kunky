@@ -276,3 +276,15 @@ img.mark{background:none;object-fit:contain}
 .stepper div{display:flex;align-items:center;gap:10px}
 .stepper button{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);font:700 1.4rem/1 "Source Sans 3",sans-serif;cursor:pointer;color:var(--ink)}
 .stepper b{min-width:72px;text-align:center;font:800 1.35rem "Bricolage Grotesque",sans-serif}
+
+/* AI čítanie dokladov */
+.scanbox{border:1.5px dashed var(--line);border-radius:var(--r-md);padding:12px;margin-bottom:12px;background:color-mix(in srgb,var(--sun-soft) 45%,transparent)}
+.scanbtn{width:100%;cursor:pointer}
+.scanbtn svg{width:20px;height:20px;flex:none}
+.scanbtn.busy{opacity:.7;pointer-events:none}
+.scanbtn.busy svg{animation:scanpulse 1s ease-in-out infinite alternate}
+@keyframes scanpulse{from{opacity:.35}to{opacity:1}}
+.scan-msg{margin:8px 2px 0}
+.scan-msg.ok{color:var(--ok)} .scan-msg.bad{color:var(--bad)}
+label.f.ai-filled input,label.f.ai-filled select,label.f.ai-filled textarea{border-color:var(--ok);box-shadow:0 0 0 2px var(--ok-soft)}
+@media (prefers-reduced-motion:reduce){.scanbtn.busy svg{animation:none}}

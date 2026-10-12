@@ -17,9 +17,11 @@ Spoločný prehľad celej domácnosti pre všetkých členov rodiny – na mobil
 - **Kúrenie / chladenie** – tepelné čerpadlo, klimatizácia a ohrev vody Daikin (cez Daikin Onecta):
   teploty doma aj vonku, zapnúť / vypnúť, režim, nastavená teplota, rýchly ohrev. Ovládať sa dá aj hlasom
   cez Claude („nastav kúrenie na 22 stupňov“).
-- **Nákupný zoznam** – spoločný, mení sa u všetkých naživo.
+- **Nákupný zoznam** – spoločný, mení sa u všetkých naživo. Keď niekto pridá položku, ostatní hneď dostanú upozornenie.
+- **Upozornenia na nové záznamy** – nová pripomienka, poznámka, recept či nápad (okrem súkromných) príde hneď ostatným členom.
 - **Domácnosť** – zariadenia (záruka, servis), autá (STK, EK, známka, servis), poistenia
-  (auto, osoby, životné, majetok) s ročným súčtom poistného.
+  (auto, osoby, životné, majetok) s ročným súčtom poistného. **AI načítanie dokladov** – odfoťte technický preukaz
+  alebo poistnú zmluvu (aj PDF) a formulár sa vyplní sám, stačí skontrolovať a uložiť.
 - **Zdravie** – prehliadky a návštevy lekára každej osoby. Každý si sám nastaví, kto jeho záznamy vidí:
   iba ja / ja a správcovia / všetci / vybraní členovia.
 - **Nákupy a záruky** – tovar so zárukou, dátum nákupu, fotka alebo sken bločka či faktúry, stráženie konca záruky.
@@ -49,6 +51,9 @@ Bezpečnosť stojí na pravidlách v databáze (Row Level Security) – každá 
    s Redirect URI `https://tiadykirohlgabalkxyn.supabase.co/functions/v1/daikin/callback`, potom v Supabase →
    Edge Functions → Secrets pridať `DAIKIN_CLIENT_ID` a `DAIKIN_CLIENT_SECRET`. V aplikácii Rodina → Kúrenie →
    „Prepojiť s Daikin Onecta“ (správca rodiny).
+
+5. **AI čítanie dokladov**: na console.anthropic.com vytvoriť API kľúč a v Supabase → Edge Functions → Secrets
+   pridať `ANTHROPIC_API_KEY`.
 
 ## Čo príde neskôr
 

@@ -7,9 +7,10 @@ self.addEventListener("push", (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : "" }; }
   const show = self.registration.showNotification(d.title || "Rodina", {
     body: d.body || "", icon: "ikona-192.png", badge: "ikona-192.png", lang: "sk",
-    tag: d.tag || undefined, renotify: !!d.tag,          // aj aktualizácia tej istej správy zazvoní
+    tag: d.tag || undefined, renotify: !!d.tag && !d.quiet, // aktualizácia zazvoní; „quiet“ = ďalšia položka nákupu potichu
+    silent: !!d.quiet,
     requireInteraction: !!d.important,                   // dôležité (nová rýchla správa) ostane na obrazovke
-    vibrate: [200, 100, 200], silent: false, timestamp: Date.now(),
+    vibrate: d.quiet ? undefined : [200, 100, 200], timestamp: Date.now(),
     data: { url: d.url || "/#/prehlad" },
   });
   // číslo na ikone aplikácie (iPhone z plochy, Android, Windows/macOS)
