@@ -231,9 +231,16 @@ const SCAN_TEXT = {
   vehicle: { btn: "Načítať z technického preukazu", hint: "Odfoťte alebo nahrajte technický preukaz (obe strany môžete naraz). AI prepíše EČV, VIN, značku, model a rok." },
   insurance: { btn: "Načítať z poistnej zmluvy", hint: "Odfoťte alebo nahrajte zmluvu, zelenú kartu či potvrdenie (aj viac strán, alebo PDF). AI prepíše poisťovňu, číslo zmluvy, poistné a dátumy." },
 };
+let aiScan = null; // null = ešte nevieme, true/false = je nastavený kľúč na serveri
+async function aiScanEnabled() {
+  if (aiScan !== null) return aiScan;
+  try { const { data } = await sb.functions.invoke("citat-doklad", { body: { check: true } }); aiScan = !!data?.enabled; }
+  catch { aiScan = false; }
+  return aiScan;
+}
 function scanHtml(kind) {
   const t = SCAN_TEXT[kind];
-  return `<div class="scanbox"><div class="scan-row">
+  return `<div class="scanbox hidden"><div class="scan-row">
       <label class="btn ghost scanbtn">${ICON.scan}<span>${esc(t.btn)}</span>
         <input type="file" accept="image/*,application/pdf" multiple data-scan hidden></label>
     </div><p class="mut sm scan-msg">${esc(t.hint)}</p></div>`;
@@ -254,8 +261,17 @@ async function scanFile(f) {
   if (!blob) throw new Error("Fotku sa nepodarilo spracovať.");
   return { mime: "image/jpeg", data: await blobB64(blob) };
 }
+const SCAN_TIP = {
+  vehicle: "Tip: odfoťte technický preukaz v aplikácii Claude a napíšte „ulož auto do Rodiny“ – Claude ho zapíše sem.",
+  insurance: "Tip: odfoťte poistnú zmluvu v aplikácii Claude a napíšte „ulož poistenie do Rodiny“ – Claude ho zapíše sem.",
+};
 function bindScan(el, def) {
   const input = el.querySelector("[data-scan]"); if (!input) return;
+  const box = el.querySelector(".scanbox");
+  aiScanEnabled().then((on) => {
+    if (on) { box.classList.remove("hidden"); return; }
+    box.outerHTML = `<p class="mut sm scan-tip">${esc(SCAN_TIP[def.scan])}</p>`;
+  });
   const msg = el.querySelector(".scan-msg"), lbl = el.querySelector(".scanbtn"), form = el.querySelector("form");
   input.addEventListener("change", async () => {
     const files = [...input.files].slice(0, 4); input.value = "";

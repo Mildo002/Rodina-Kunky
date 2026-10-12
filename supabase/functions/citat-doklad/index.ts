@@ -1,5 +1,6 @@
 // Rodina – AI čítanie dokladov (Claude vision): technický preukaz → formulár Auto, poistná zmluva → formulár Poistenie.
 // Vstup (POST, prihlásený používateľ): {"household_id":uuid, "kind":"vehicle"|"insurance", "files":[{"mime":"image/jpeg","data":"<base64>"}]}
+// {"check":true} → {"enabled":bool} (je nastavený kľúč?)
 // Výstup: {"fields":{…}} – iba návrh hodnôt do formulára, nič sa neukladá. Obrázky sa neukladajú ani nelogujú.
 // Tajomstvo ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets) zadáva majiteľ.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -90,6 +91,7 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: "Nie ste prihlásený" }, 401);
 
     const raw = await req.text();
+    if (raw.length < 200 && /"check"\s*:\s*true/.test(raw)) return json({ enabled: !!Deno.env.get("ANTHROPIC_API_KEY") });
     if (raw.length > MAX_BYTES + 20000) return json({ error: "Súbory sú príliš veľké (spolu max. 6 MB)." }, 413);
     const body = JSON.parse(raw || "{}");
     const kind = String(body.kind || "");

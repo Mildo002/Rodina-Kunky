@@ -42,13 +42,15 @@
 - AI čítanie dokladov: edge funkcia `citat-doklad` (verify_jwt zapnuté + kontrola členstva), Claude vision
   (`claude-sonnet-5-5`, tool use). Formuláre Auto (technický preukaz) a Poistenie (zmluva) majú `scan` → tlačidlo hore.
   Nič neukladá, iba vráti návrh polí. Limit 40/deň/používateľ, 120/deň/rodina (`ai_usage`, iba server).
-  Tajomstvo `ANTHROPIC_API_KEY` v Supabase (Edge Functions → Secrets) zadáva majiteľ.
+  Tajomstvo `ANTHROPIC_API_KEY` v Supabase (Edge Functions → Secrets) zadáva majiteľ – zatiaľ nie je nastavené.
+  Appka sa pýta `{"check":true}`; bez kľúča tlačidlo skryje a ukáže tip na Claude (ulozit_auto / ulozit_poistenie).
 - Pripomienky: sekcia `#/pripomienky` – rýchly zápis (aj diktovanie), s dátumom ide do `reminders`, inak do `notes`
   (recept / poznámka / nápad, súkromné vidí iba autor).
 - Konektor pre Claude: edge funkcia `rodina-mcp` (MCP cez HTTP, JSON-RPC, verify_jwt vypnuté). Kľúč v URL
   `/functions/v1/rodina-mcp/<kľúč>`, v `api_tokens` iba SHA-256 odtlačok. Nástroje: pridat_pripomienku, pridat_poznamku,
-  pridat_na_nakup, poslat_rychlu_spravu, zoznam_terminov, hladat_poznamky, kurenie_stav, kurenie_nastav
-  (zdravotné údaje cez konektor nejdú).
+  pridat_na_nakup, poslat_rychlu_spravu, zoznam_terminov, hladat_poznamky, kurenie_stav, kurenie_nastav,
+  ulozit_auto, ulozit_poistenie (podľa fotky TP / zmluvy v aplikácii Claude – bezplatná cesta bez API kľúča;
+  existujúce auto podľa EČV/VIN a poistenie podľa čísla zmluvy aktualizuje). Zdravotné údaje cez konektor nejdú.
 - Kúrenie / chladenie (Daikin Onecta): edge funkcia `daikin` (verify_jwt vypnuté; overenie tokenom používateľa
   alebo `x-cron-secret` pre rodina-mcp). Akcie `cached`, `status`, `set`, `start`, `disconnect`; návrat OAuth
   `/functions/v1/daikin/callback` → `#/kurenie?daikin=ok|chyba|…`. Tokeny a cache v `daikin_accounts` (iba server).

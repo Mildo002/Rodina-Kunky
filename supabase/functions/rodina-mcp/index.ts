@@ -92,6 +92,49 @@ const TOOLS = [
     },
   },
   {
+    name: "ulozit_auto",
+    description: "Uloží auto do aplikácie Rodina (Domácnosť → Autá), napr. podľa fotky technického preukazu (osvedčenia o evidencii), ktorú používateľ pošle. " +
+      "V preukaze: A = EČV, B = dátum prvej evidencie, D.1 = značka, D.3 = obchodný názov (model), E = VIN. Vyplň iba to, čo na doklade naozaj je. " +
+      "Ak auto s rovnakou EČV alebo VIN v rodine už je, doplní / aktualizuje ho (prázdne polia nemení). Po uložení používateľovi vypíš, čo si zapísal, aby to skontroloval.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nazov: { type: "string", description: "Názov v appke, napr. „Škoda Octavia“. Ak chýba, zloží sa zo značky a modelu." },
+        ecv: { type: "string", description: "Evidenčné číslo, napr. „PU123AB“." },
+        znacka: { type: "string" }, model: { type: "string" },
+        vin: { type: "string", description: "17-miestne VIN." },
+        rok_vyroby: { type: "integer" },
+        stk_do: { ...DATE, description: "STK platí do (RRRR-MM-DD)." },
+        ek_do: { ...DATE, description: "Emisná kontrola platí do (RRRR-MM-DD)." },
+        dialnicna_znamka: { type: "string", enum: ["rocna", "30dni", "10dni", "1den"] },
+        znamka_do: { ...DATE, description: "Diaľničná známka platí do." },
+        servis: { ...DATE, description: "Najbližší servis." },
+        poznamka: { type: "string", description: "Ďalšie údaje (výkon, objem, palivo, farba, číslo TP…), krátko." },
+      },
+    },
+  },
+  {
+    name: "ulozit_poistenie",
+    description: "Uloží poistenie do aplikácie Rodina (Domácnosť → Poistenia), napr. podľa fotky alebo PDF poistnej zmluvy, zelenej karty či potvrdenia. " +
+      "Vyplň iba to, čo na doklade je. Poistné je výška jednej splátky podľa frekvencie platenia. Ak poistenie s rovnakým číslom zmluvy už existuje, aktualizuje ho. " +
+      "Aplikácia potom sama pripomína platby (20. deň v mesiaci pred splatnosťou) a koniec poistenia. Po uložení vypíš, čo si zapísal.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        druh: { type: "string", enum: ["auto", "osoba", "zivotne", "majetok", "ine"], description: "auto = PZP / havarijné, osoba = úrazové / cestovné, zivotne = životné, majetok = domácnosť / nehnuteľnosť." },
+        nazov: { type: "string", description: "Krátky názov, napr. „PZP Škoda Octavia“, „Poistenie domácnosti“." },
+        poistovna: { type: "string" }, cislo_zmluvy: { type: "string" },
+        poistne: { type: "number", description: "Výška jednej splátky v €." },
+        platba: { type: "string", enum: ["mesacne", "stvrtrocne", "polrocne", "rocne", "jednorazovo"] },
+        najblizsia_platba: { ...DATE, description: "Najbližší dátum splatnosti (budúci)." },
+        plati_od: DATE, plati_do: { ...DATE, description: "Koniec poistenia; pri dobe neurčitej vynechať." },
+        poistena_osoba: { type: "string", description: "Meno poistenej osoby (nie pri PZP)." },
+        ecv_auta: { type: "string", description: "EČV poisteného auta (pri poistení auta)." },
+        poznamka: { type: "string", description: "Rozsah krytia, limity, spoluúčasť, kontakt na škody – krátko." },
+      },
+    },
+  },
+  {
     name: "zoznam_terminov",
     description: "Vypíše naplánované pripomienky a termíny rodiny na najbližšie dni (pripomienky, lekár, STK, poistenia, záruky).",
     inputSchema: { type: "object", properties: { dni: { type: "integer", description: "Koľko dní dopredu, predvolené 14." } } },
@@ -149,6 +192,17 @@ function describe(x: any) {
     (x.outdoorTemp != null ? `, vonku ${deg(x.outdoorTemp)}` : "") + (sp ? `, nastavené ${sp.key === "leavingWaterOffset" ? `posun ${sp.value}` : deg(sp.value)}` : "") +
     (lw && lw !== sp ? `, vykurovacia voda ${deg(lw.value)}${x.leavingWater != null ? ` (teraz ${deg(x.leavingWater)})` : ""}` : "") +
     (!x.online ? " – OFFLINE" : "");
+}
+
+const LABEL: Record<string, string> = {
+  name: "názov", plate: "EČV", vin: "VIN", make: "značka", model: "model", year_made: "rok výroby", stk_until: "STK do", ek_until: "EK do",
+  vignette_kind: "známka", vignette_until: "známka do", next_service_on: "servis", note: "poznámka", kind: "druh", insurer: "poisťovňa",
+  policy_no: "číslo zmluvy", premium: "poistné €", frequency: "platba", next_payment_on: "najbližšia platba", valid_from: "platí od",
+  valid_until: "platí do",
+};
+function describeRow(r: Record<string, unknown>) {
+  return Object.entries(r).filter(([k]) => LABEL[k]).map(([k, v]) => `${LABEL[k]} ${isDate(v) ? fmt(String(v)) : v}`).join(", ") +
+    (r.vehicle_id ? ", priradené k autu" : "") + (r.person_id ? ", priradené k osobe" : "");
 }
 
 async function callTool(name: string, a: Record<string, any>, c: Ctx) {
@@ -231,6 +285,82 @@ async function callTool(name: string, a: Record<string, any>, c: Ctx) {
     if (error) return fail("Nepodarilo sa odoslať: " + error.message);
     return ok("Rýchla správa odoslaná celej rodine – dostanú upozornenie.");
   }
+  if (name === "ulozit_auto") {
+    const norm = (v: unknown) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const t = (v: unknown, n = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : undefined);
+    const row: Record<string, unknown> = {};
+    const plate = t(a.ecv, 12); if (plate) row.plate = plate.toUpperCase().replace(/\s+/g, "");
+    const vin = norm(a.vin); if (vin) { if (!/^[A-HJ-NPR-Z0-9]{11,17}$/.test(vin)) return fail("VIN nevyzerá platne – skontrolujte ho."); row.vin = vin; }
+    if (t(a.znacka, 40)) row.make = t(a.znacka, 40);
+    if (t(a.model, 60)) row.model = t(a.model, 60);
+    if (Number.isInteger(a.rok_vyroby) && a.rok_vyroby > 1900 && a.rok_vyroby <= new Date().getFullYear() + 1) row.year_made = a.rok_vyroby;
+    for (const [k, col] of [["stk_do", "stk_until"], ["ek_do", "ek_until"], ["znamka_do", "vignette_until"], ["servis", "next_service_on"]]) {
+      if (a[k] != null) { if (!isDate(a[k])) return fail(`${k}: dátum musí byť RRRR-MM-DD.`); row[col] = a[k]; }
+    }
+    if (a.dialnicna_znamka) { if (!["rocna", "30dni", "10dni", "1den"].includes(a.dialnicna_znamka)) return fail("Neznámy druh známky."); row.vignette_kind = a.dialnicna_znamka; }
+    if (t(a.poznamka, 400)) row.note = t(a.poznamka, 400);
+    const nm = t(a.nazov) || [row.make, row.model].filter(Boolean).join(" ").toLowerCase().replace(/(^|\s|-)\S/g, (x) => x.toUpperCase());
+    if (nm) row.name = nm;
+    if (!Object.keys(row).length) return fail("Nemám čo uložiť – chýbajú údaje o aute.");
+    const { data: all } = await db.from("vehicles").select("*").eq("household_id", c.household_id);
+    const ex = (all || []).find((v) => (row.plate && norm(v.plate) === norm(row.plate)) || (row.vin && norm(v.vin) === row.vin));
+    if (ex) {
+      for (const k of Object.keys(row)) if (k === "name" && ex.name) delete row[k]; // existujúci názov nemení
+      if (row.note && ex.note && !String(ex.note).includes(String(row.note))) row.note = `${ex.note}\n${row.note}`;
+      const { error } = await db.from("vehicles").update(row).eq("id", ex.id);
+      if (error) return fail("Nepodarilo sa uložiť: " + error.message);
+      return ok(`Aktualizované auto „${ex.name}“ v aplikácii Rodina: ${describeRow(row)}.`);
+    }
+    if (!row.name) return fail("Chýba názov auta (značka alebo model).");
+    const { error } = await db.from("vehicles").insert({ household_id: c.household_id, ...row });
+    if (error) return fail("Nepodarilo sa uložiť: " + error.message);
+    return ok(`Nové auto uložené do aplikácie Rodina → Autá: ${describeRow(row)}. Ak treba, STK, EK a známku doplňte (stačí mi napísať).`);
+  }
+  if (name === "ulozit_poistenie") {
+    const norm = (v: unknown) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const t = (v: unknown, n = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : undefined);
+    const row: Record<string, unknown> = {};
+    if (a.druh) { if (!["auto", "osoba", "zivotne", "majetok", "ine"].includes(a.druh)) return fail("Neznámy druh poistenia."); row.kind = a.druh; }
+    if (t(a.nazov)) row.name = t(a.nazov);
+    if (t(a.poistovna)) row.insurer = t(a.poistovna);
+    if (t(a.cislo_zmluvy, 40)) row.policy_no = t(a.cislo_zmluvy, 40);
+    if (a.poistne != null) { const p = Number(a.poistne); if (!(p > 0 && p < 1e6)) return fail("Poistné nevyzerá správne."); row.premium = Math.round(p * 100) / 100; }
+    if (a.platba) { if (!["mesacne", "stvrtrocne", "polrocne", "rocne", "jednorazovo"].includes(a.platba)) return fail("Neznáma frekvencia platby."); row.frequency = a.platba; }
+    for (const [k, col] of [["najblizsia_platba", "next_payment_on"], ["plati_od", "valid_from"], ["plati_do", "valid_until"]]) {
+      if (a[k] != null) { if (!isDate(a[k])) return fail(`${k}: dátum musí byť RRRR-MM-DD.`); row[col] = a[k]; }
+    }
+    if (t(a.poznamka, 400)) row.note = t(a.poznamka, 400);
+    const extra: string[] = [];
+    if (t(a.ecv_auta, 12)) {
+      const { data: veh } = await db.from("vehicles").select("id,name,plate").eq("household_id", c.household_id);
+      const v = (veh || []).find((x) => x.plate && norm(x.plate) === norm(a.ecv_auta));
+      if (v) row.vehicle_id = v.id; else extra.push(`auto s EČV ${a.ecv_auta} v Rodine nie je – najprv ho môžem pridať`);
+    }
+    if (t(a.poistena_osoba)) {
+      const { data: per } = await db.from("persons").select("id,name").eq("household_id", c.household_id);
+      const n = norm(a.poistena_osoba);
+      const p = (per || []).find((x) => { const m = norm(x.name); return m && (n.includes(m) || m.includes(n)); });
+      if (p) row.person_id = p.id; else extra.push(`osobu „${a.poistena_osoba}“ som v rodine nenašiel`);
+    }
+    if (!Object.keys(row).length) return fail("Nemám čo uložiť – chýbajú údaje o poistení.");
+    let ex = null;
+    if (row.policy_no) {
+      const { data: all } = await db.from("insurances").select("*").eq("household_id", c.household_id);
+      ex = (all || []).find((x) => x.policy_no && norm(x.policy_no) === norm(row.policy_no));
+    }
+    const tail = extra.length ? ` Pozor: ${extra.join("; ")}.` : "";
+    if (ex) {
+      if (ex.name) delete row.name;
+      const { error } = await db.from("insurances").update(row).eq("id", ex.id);
+      if (error) return fail("Nepodarilo sa uložiť: " + error.message);
+      return ok(`Aktualizované poistenie „${ex.name}“ v aplikácii Rodina: ${describeRow(row)}.${tail}`);
+    }
+    if (!row.name) row.name = [row.insurer, row.policy_no].filter(Boolean).join(" ") || "Poistenie";
+    if (!row.kind) row.kind = row.vehicle_id ? "auto" : "ine";
+    const { error } = await db.from("insurances").insert({ household_id: c.household_id, ...row });
+    if (error) return fail("Nepodarilo sa uložiť: " + error.message);
+    return ok(`Nové poistenie uložené do aplikácie Rodina → Poistenia: ${describeRow(row)}.${tail}`);
+  }
   if (name === "zoznam_terminov") {
     const now = localNow(), to = addDays(now.date, Math.min(Math.max(Number(a.dni) || 14, 1), 120));
     const h = c.household_id;
@@ -273,9 +403,10 @@ async function handle(msg: any, c: Ctx) {
     const now = localNow();
     return res({
       protocolVersion: v, capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "rodina", title: "Rodina", version: "1.0.0" },
+      serverInfo: { name: "rodina", title: "Rodina", version: "1.1.0" },
       instructions: `Aplikácia Rodina pre rodinu „${c.household}“. Dnes je ${weekday(now.date)} ${now.date}, ${now.time} (slovenský čas). ` +
-        "Keď používateľ chce niečo pripomenúť, uložiť recept či poznámku, pridať na nákup alebo poslať správu rodine, použi nástroje. Dátumy RRRR-MM-DD, čas HH:MM. Odpovedaj po slovensky.",
+        "Keď používateľ chce niečo pripomenúť, uložiť recept či poznámku, pridať na nákup alebo poslať správu rodine, použi nástroje. " +
+        "Keď pošle fotku alebo PDF technického preukazu či poistnej zmluvy a chce ju uložiť, prečítaj údaje a použi ulozit_auto / ulozit_poistenie. Dátumy RRRR-MM-DD, čas HH:MM. Odpovedaj po slovensky.",
     });
   }
   if (method === "ping") return res({});
