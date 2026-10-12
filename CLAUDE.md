@@ -44,6 +44,9 @@
   Nič neukladá, iba vráti návrh polí. Limit 40/deň/používateľ, 120/deň/rodina (`ai_usage`, iba server).
   Tajomstvo `ANTHROPIC_API_KEY` v Supabase (Edge Functions → Secrets) zadáva majiteľ – zatiaľ nie je nastavené.
   Appka sa pýta `{"check":true}`; bez kľúča tlačidlo skryje a ukáže tip na Claude (ulozit_auto / ulozit_poistenie).
+- Zákonné poistenie (migrácia 0014): `insurances.statutory` (pri názve s „PZP“ sa zapne samo triggerom pri vložení).
+  Upozornenie 9 týždňov (63 dní) pred výročím = `valid_until`, inak výročie `valid_from`; v texte termín výpovede (−42 dní).
+  Bežné poistenie s `valid_until` ostáva 3 mesiace vopred. V kalendári udalosť „Porovnať / vypovedať“.
 - Pripomienky: sekcia `#/pripomienky` – rýchly zápis (aj diktovanie), s dátumom ide do `reminders`, inak do `notes`
   (recept / poznámka / nápad, súkromné vidí iba autor).
 - Konektor pre Claude: edge funkcia `rodina-mcp` (MCP cez HTTP, JSON-RPC, verify_jwt vypnuté). Kľúč v URL

@@ -289,3 +289,5 @@ img.mark{background:none;object-fit:contain}
 label.f.ai-filled input,label.f.ai-filled select,label.f.ai-filled textarea{border-color:var(--ok);box-shadow:0 0 0 2px var(--ok-soft)}
 @media (prefers-reduced-motion:reduce){.scanbtn.busy svg{animation:none}}
 .scan-tip{margin:0 2px 12px}
+label.f.check{display:flex;gap:10px;align-items:flex-start;font-weight:600}
+label.f.check input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--brand)}

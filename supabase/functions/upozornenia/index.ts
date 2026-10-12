@@ -170,7 +170,17 @@ async function itemsFor(today: string, dry: boolean): Promise<Item[]> {
           body: [eur(x.premium), `splatné ${fmt(pay)}`, x.insurer].filter(Boolean).join(" · "), url: "/#/domacnost", tag: `platba-${x.id}`,
         });
       }
-      if (x.valid_until && addMonths(x.valid_until, -3) === today) out.push({
+      // Zákonné poistenie (PZP): 9 týždňov pred výročím / koncom – výpoveď sa podáva najneskôr 6 týždňov vopred
+      if (x.statutory) {
+        let an: string | null = x.valid_until;
+        if (!an && x.valid_from) { an = x.valid_from; while (an <= today) an = addMonths(an, 12); }
+        if (an && addDays(an, -63) === today) out.push({
+          users: all, key: `pzp-vyrocie:${x.id}:${an}`, title: `${x.name}: o 9 týždňov výročie`,
+          body: `Výročie ${fmt(an)}${x.insurer ? ` · ${x.insurer}` : ""}. Ak chcete zmeniť poisťovňu, výpoveď treba doručiť do ${fmt(addDays(an, -42))}.`,
+          url: "/#/domacnost/poistenia", tag: `pzp-${x.id}`,
+        });
+      }
+      if (x.valid_until && !x.statutory && addMonths(x.valid_until, -3) === today) out.push({
         users: all, key: `poistenie-koniec:${x.id}:${x.valid_until}`, title: `Poistenie končí o 3 mesiace`,
         body: `${x.name} · platí do ${fmt(x.valid_until)}${x.insurer ? ` · ${x.insurer}` : ""}`, url: "/#/domacnost/poistenia",
       });

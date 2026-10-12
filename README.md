@@ -27,7 +27,7 @@ Spoločný prehľad celej domácnosti pre všetkých členov rodiny – na mobil
   iba ja / ja a správcovia / všetci / vybraní členovia.
 - **Nákupy a záruky** – tovar so zárukou, dátum nákupu, fotka alebo sken bločka či faktúry, stráženie konca záruky.
 - **Upozornenia** do mobilu aj počítača: pripomienky v nastavenom čase (napr. 2 hodiny vopred), lekár jeden
-  pracovný deň vopred, platba poistenia 20. deň v mesiaci pred splatnosťou, koniec poistenia 3 mesiace vopred,
+  pracovný deň vopred, platba poistenia 20. deň v mesiaci pred splatnosťou, koniec poistenia 3 mesiace vopred, PZP a iné zákonné poistenie 9 týždňov pred výročím (čas na výpoveď),
   STK a EK 10 dní vopred, diaľničná známka ročná 7 dní / kratšia 24 hodín / 24-hodinová pri konci platnosti,
   koniec záruky 30 dní vopred. Denné pravidlá chodia o 7:00. Na iPhone treba aplikáciu najprv pridať na plochu.
 - **Zámok aplikácie** – Face ID / odtlačok / Windows Hello, inak 4-miestny kód (na každom zariadení zvlášť).

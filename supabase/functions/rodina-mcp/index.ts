@@ -131,6 +131,7 @@ const TOOLS = [
         poistena_osoba: { type: "string", description: "Meno poistenej osoby (nie pri PZP)." },
         ecv_auta: { type: "string", description: "EČV poisteného auta (pri poistení auta)." },
         poznamka: { type: "string", description: "Rozsah krytia, limity, spoluúčasť, kontakt na škody – krátko." },
+        zakonne: { type: "boolean", description: "true pri zákonnom poistení (PZP) – appka upozorní 9 týždňov pred výročím kvôli výpovedi. Pri názve s „PZP“ sa nastaví samo." },
       },
     },
   },
@@ -198,10 +199,10 @@ const LABEL: Record<string, string> = {
   name: "názov", plate: "EČV", vin: "VIN", make: "značka", model: "model", year_made: "rok výroby", stk_until: "STK do", ek_until: "EK do",
   vignette_kind: "známka", vignette_until: "známka do", next_service_on: "servis", note: "poznámka", kind: "druh", insurer: "poisťovňa",
   policy_no: "číslo zmluvy", premium: "poistné €", frequency: "platba", next_payment_on: "najbližšia platba", valid_from: "platí od",
-  valid_until: "platí do",
+  valid_until: "platí do", statutory: "zákonné (upozornenie 9 týždňov pred výročím)",
 };
 function describeRow(r: Record<string, unknown>) {
-  return Object.entries(r).filter(([k]) => LABEL[k]).map(([k, v]) => `${LABEL[k]} ${isDate(v) ? fmt(String(v)) : v}`).join(", ") +
+  return Object.entries(r).filter(([k, v]) => LABEL[k] && v !== false).map(([k, v]) => v === true ? LABEL[k] : `${LABEL[k]} ${isDate(v) ? fmt(String(v)) : v}`).join(", ") +
     (r.vehicle_id ? ", priradené k autu" : "") + (r.person_id ? ", priradené k osobe" : "");
 }
 
@@ -330,6 +331,7 @@ async function callTool(name: string, a: Record<string, any>, c: Ctx) {
       if (a[k] != null) { if (!isDate(a[k])) return fail(`${k}: dátum musí byť RRRR-MM-DD.`); row[col] = a[k]; }
     }
     if (t(a.poznamka, 400)) row.note = t(a.poznamka, 400);
+    if (typeof a.zakonne === "boolean") row.statutory = a.zakonne;
     const extra: string[] = [];
     if (t(a.ecv_auta, 12)) {
       const { data: veh } = await db.from("vehicles").select("id,name,plate").eq("household_id", c.household_id);

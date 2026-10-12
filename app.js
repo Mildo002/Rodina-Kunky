@@ -108,6 +108,15 @@ const ICON = {
 
 /* ================= číselníky ================= */
 const KIND_LABEL = { auto: "Poistenie auta", osoba: "Poistenie osôb", zivotne: "Životné poistenie", majetok: "Poistenie majetku", ine: "Iné poistenie" };
+/** Výročie poistenia: dátum konca, inak najbližšie výročie od začiatku (dnes alebo neskôr). */
+function insAnniv(x) {
+  if (x.valid_until) return x.valid_until;
+  if (!x.valid_from) return null;
+  const t = today(), d = parse(x.valid_from);
+  let y = Math.max(d.getFullYear(), Number(t.slice(0, 4)) - 1), a;
+  do { a = iso(new Date(y, d.getMonth(), Math.min(d.getDate(), new Date(y, d.getMonth() + 1, 0).getDate()))); y++; } while (a < t || a <= x.valid_from);
+  return a;
+}
 const FREQ = [["mesacne", "mesačne"], ["stvrtrocne", "štvrťročne"], ["polrocne", "polročne"], ["rocne", "ročne"], ["jednorazovo", "jednorazovo"]];
 const REPEAT = [["", "Neopakovať"], ["1", "Každý mesiac"], ["3", "Každé 3 mesiace"], ["6", "Každého pol roka"], ["12", "Každý rok"], ["24", "Každé 2 roky"]];
 const REMIND = [["0", "V čase udalosti"], ["15", "15 minút vopred"], ["30", "30 minút vopred"], ["60", "1 hodinu vopred"], ["120", "2 hodiny vopred"], ["180", "3 hodiny vopred"], ["1440", "1 deň vopred"], ["2880", "2 dni vopred"], ["10080", "1 týždeň vopred"]];
@@ -153,6 +162,7 @@ const FORMS = {
       { k: "frequency", l: "Platí sa", t: "select", opts: [["", "—"], ...FREQ], half: true },
       { k: "next_payment_on", l: "Najbližšia platba", t: "date" },
       { k: "valid_from", l: "Platí od", t: "date", half: true }, { k: "valid_until", l: "Platí do", t: "date", half: true },
+      { k: "statutory", l: "Zákonné poistenie (PZP) – upozorniť 9 týždňov pred výročím, aby bol čas na výpoveď", t: "check" },
       { k: "note", l: "Poznámka", t: "textarea" },
     ],
   }),
@@ -207,6 +217,7 @@ function fieldHtml(f, v) {
   const req = f.req ? " required" : "";
   const ph = f.ph ? ` placeholder="${esc(f.ph)}"` : "";
   let input;
+  if (f.t === "check") return `<label class="f check"><input type="checkbox" name="${f.k}" value="1"${val === true ? " checked" : ""}><span>${esc(f.l)}</span></label>`;
   if (f.t === "select") input = `<select name="${f.k}"${req}>${f.opts.map(([o, l]) => `<option value="${esc(o)}"${String(o) === String(val) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   else if (f.t === "textarea") input = `<textarea name="${f.k}"${ph}>${esc(val)}</textarea>`;
   else input = `<input name="${f.k}" type="${f.t || "text"}"${f.step ? ` step="${f.step}"` : ""} value="${esc(f.t === "time" ? fmtTime(val) : val)}"${req}${ph}>`;
@@ -221,6 +232,7 @@ function formHtml(fields, data) {
 function readForm(form, fields) {
   const fd = new FormData(form), o = {};
   for (const f of fields) {
+    if (f.t === "check") { o[f.k] = fd.get(f.k) === "1"; continue; }
     let v = fd.get(f.k); v = typeof v === "string" ? v.trim() : v;
     o[f.k] = v === "" || v == null ? null : f.t === "number" || f.num || f.k === "repeat_months" ? Number(String(v).replace(",", ".")) : v;
   }
@@ -478,7 +490,7 @@ async function loadEvents(from, to) {
   const [r, v, veh, ins, dev, pur] = await Promise.all([
     rq, vq,
     sb.from("vehicles").select("id,name,stk_until,ek_until,vignette_until,next_service_on").eq("household_id", h),
-    sb.from("insurances").select("id,name,kind,next_payment_on,valid_until,premium").eq("household_id", h),
+    sb.from("insurances").select("id,name,kind,next_payment_on,valid_from,valid_until,premium,statutory").eq("household_id", h),
     sb.from("devices").select("id,name,warranty_until,next_service_on").eq("household_id", h),
     sb.from("purchases").select("id,name,store,warranty_until").eq("household_id", h),
   ]);
@@ -495,6 +507,11 @@ async function loadEvents(from, to) {
   for (const x of ins.data) {
     if (inRange(x.next_payment_on)) ev.push({ date: x.next_payment_on, title: `Platba: ${x.name}`, sub: x.premium ? `${Number(x.premium).toLocaleString("sk-SK", { minimumFractionDigits: 2 })} €` : KIND_LABEL[x.kind], k: "poistenie", type: "insurance", id: x.id });
     if (inRange(x.valid_until)) ev.push({ date: x.valid_until, title: `Končí poistenie: ${x.name}`, sub: KIND_LABEL[x.kind], k: "poistenie", type: "insurance", id: x.id });
+    if (x.statutory) {
+      const an = insAnniv(x);
+      if (an && inRange(addDays(an, -63))) ev.push({ date: addDays(an, -63), title: `Porovnať / vypovedať: ${x.name}`, sub: `výročie ${fmt(an)}, výpoveď do ${fmt(addDays(an, -42))}`, k: "poistenie", type: "insurance", id: x.id });
+      if (an && !x.valid_until && inRange(an)) ev.push({ date: an, title: `Výročie poistenia: ${x.name}`, sub: KIND_LABEL[x.kind], k: "poistenie", type: "insurance", id: x.id });
+    }
   }
   for (const x of dev.data) {
     if (inRange(x.warranty_until)) ev.push({ date: x.warranty_until, title: `Končí záruka: ${x.name}`, sub: "Zariadenie", k: "zariadenie", type: "device", id: x.id });
@@ -1174,7 +1191,7 @@ async function viewDomacnost() {
       ${total ? `<div class="card" style="margin-bottom:14px"><b style="font:800 1.4rem 'Bricolage Grotesque',sans-serif">${total.toLocaleString("sk-SK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</b><div class="mut sm">ročne za pravidelne platené poistenia</div></div>` : ""}
       ${Object.entries(byKind).map(([k, items]) => `<section><h3 style="margin-bottom:8px">${KIND_LABEL[k]}</h3><div class="list">${items.map((x) => {
         const who = [personName(x.person_id), vehicles.find((v) => v.id === x.vehicle_id)?.name].filter(Boolean).join(", ");
-        return `<button class="row" data-id="${x.id}"><span class="tag k-poistenie"></span><div class="main"><b>${esc(x.name)}</b><span>${esc([x.insurer, who, x.premium ? `${Number(x.premium).toLocaleString("sk-SK", { minimumFractionDigits: 2 })} € ${FREQ.find((f) => f[0] === x.frequency)?.[1] || ""}` : ""].filter(Boolean).join(" · "))}</span></div>${x.valid_until ? pill(x.valid_until) : ""}</button>`;
+        return `<button class="row" data-id="${x.id}"><span class="tag k-poistenie"></span><div class="main"><b>${esc(x.name)}</b><span>${esc([x.insurer, who, x.premium ? `${Number(x.premium).toLocaleString("sk-SK", { minimumFractionDigits: 2 })} € ${FREQ.find((f) => f[0] === x.frequency)?.[1] || ""}` : ""].filter(Boolean).join(" · "))}</span></div>${x.valid_until ? pill(x.valid_until) : x.statutory && insAnniv(x) ? pill(insAnniv(x), 63) : ""}</button>`;
       }).join("")}</div></section>`).join("")}`
       : `<div class="card empty"><b>Zatiaľ žiadne poistenia</b>Pridajte PZP, havarijné, životné či poistenie domácnosti a aplikácia vám pripomenie platby aj koniec zmluvy.</div>`, "Pridať poistenie");
     bindTabs();
