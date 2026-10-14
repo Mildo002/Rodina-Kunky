@@ -61,6 +61,13 @@
   `/functions/v1/daikin/callback` → `#/kurenie?daikin=ok|chyba|…`. Tokeny a cache v `daikin_accounts` (iba server).
   Limit Onecta 200 dotazov/deň → cache 15 min, vynútené obnovenie najskôr po 3 min. Tajomstvá `DAIKIN_CLIENT_ID`,
   `DAIKIN_CLIENT_SECRET` v Supabase (Edge Functions → Secrets) zadáva majiteľ.
+- Chat (migrácia 0016): sekcia `#/chat` (zoznam + výber člena), `#/chat/<id>` (konverzácia). Tabuľky `chats`
+  (`is_family` = celá rodina, `member_key` = jedna konverzácia na zostavu), `chat_members` (účastníci + `last_read_at`),
+  `chat_messages`. Čítať/písať smie iba účastník (`is_chat_member()`), konverzácie zakladá iba `open_chat(household, users[])`
+  (prázdne pole = celá rodina), prečítanie `mark_chat_read()`, zoznam s neprečítanými `my_chats()` (security invoker).
+  Odosielateľ a rodina sa nastavia triggerom, meniť / mazať (mäkko, `deleted`) smie iba autor. Nová správa →
+  `call_upozornenia({"event":"chat"})` → upozornenie iba účastníkom okrem odosielateľa (`url /#/chat/<id>`, `tag chat-<id>`);
+  service worker nezvoní, ak má príjemca tú konverzáciu práve otvorenú. Realtime: `chat_messages` (RLS).
 - Zámok aplikácie je iba na zariadení (localStorage): PBKDF2 odtlačok kódu + WebAuthn platform authenticator.
 - Logo: `tools/logo_foto.py` (fotka `tools/kuny-foto.png` v srdci) generuje `logo.png`, `favicon.png`, `ikona-*.png`.
 

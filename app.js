@@ -103,6 +103,8 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h10A1.5 1.5 0 0 1 17 5.5v7a1.5 1.5 0 0 1-1.5 1.5H9l-4 3.5V14h0a1 1 0 0 1-1-1z"/><path d="M17 8.5h1.5A1.5 1.5 0 0 1 20 10v7.5l-3-2.5h-5.5a1.5 1.5 0 0 1-1.5-1.5"/></svg>',
+  send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12 20 4l-6 16-2.5-6.5z"/><path d="m11.5 13.5 3-3"/></svg>',
   right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>',
 };
 
@@ -552,6 +554,7 @@ const loading = (view) => layout(view, '<p class="mut">Načítavam…</p>');
 /* ================= PREHĽAD ================= */
 /* Dlaždice úvodnej obrazovky – jedna pre každú sekciu */
 const TILES = [
+  { k: "chat", href: "#/chat", icon: "chat", name: "Chat", empty: "Píšte si s rodinou" },
   { k: "sprava", href: "#/spravy", icon: "msg", name: "Rýchle správy", empty: "Pomoc, odvoz, škola…" },
   { k: "poznamka", href: "#/pripomienky", icon: "note", name: "Pripomienky", empty: "Poznámky, recepty, nápady" },
   { k: "kurenie", href: "#/kurenie", icon: "thermo", name: "Kúrenie / chladenie", empty: "Daikin – čerpadlo a klíma" },
@@ -583,6 +586,7 @@ async function viewPrehlad() {
       const r = ev.filter((e) => e.k === "pripomienka" && e.date >= t).length, n = notes.count ?? 0;
       return { line: [r ? `${r} ${plural(r, "pripomienka", "pripomienky", "pripomienok")}` : "", n ? `${n} ${plural(n, "poznámka", "poznámky", "poznámok")}` : ""].filter(Boolean).join(" · ") || null };
     }
+    if (k === "chat") return { line: null }; // doplní fillChatTile()
     if (k === "rodina") return { line: `${S.persons.length} ${plural(S.persons.length, "osoba", "osoby", "osôb")} v rodine`, badge: "" };
     const lateK = late.filter((e) => e.k === k).length;
     const next = soon.find((e) => e.k === k);
@@ -624,6 +628,7 @@ async function viewPrehlad() {
   document.getElementById("addVis").onclick = () => newVisit();
   askForPush();
   fillHeatTile();
+  fillChatTile();
 }
 /* stav na dlaždici Kúrenie – iba z uložených údajov (nešetrí limit Daikin) */
 async function fillHeatTile() {
@@ -728,6 +733,7 @@ function subscribeShopping() {
     .on("postgres_changes", { event: "*", schema: "public", table: "shopping_items", filter: `household_id=eq.${S.hid}` }, () => {
       if (currentView() === "nakup") renderShopping();
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages", filter: `household_id=eq.${S.hid}` }, onChatChange)
     .on("postgres_changes", { event: "*", schema: "public", table: "quick_messages", filter: `household_id=eq.${S.hid}` }, (p) => {
       const v = currentView();
       if (v === "spravy") renderMessages();
@@ -1124,6 +1130,231 @@ async function renderMessages() {
     toast(st === "prevzata" ? "Ostatní uvidia, že to vybavíte" : st === "vybavena" ? "Označené ako vybavené" : "Správa zrušená");
     renderMessages();
   }));
+}
+
+/* ================= CHAT (vo dvojici, vybraná skupina, celá rodina) ================= */
+/* Správy vidia iba účastníci konverzácie – stráži to RLS (is_chat_member), nie obrazovka. */
+const AV_COLORS = ["#2f6fd6", "#c2416b", "#16827a", "#7a4fc9", "#b7791f", "#d0632a", "#2e7d4f"];
+const fullName = (uid) => { const m = S.members.find((x) => x.user_id === uid); return m?.full_name || m?.email || "Bývalý člen"; };
+const firstName = (uid) => fullName(uid).split(" ")[0];
+function avatar(uid, size = 40) {
+  const i = Math.max(0, S.members.findIndex((m) => m.user_id === uid));
+  const ini = fullName(uid).split(/[\s@.]+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  return `<span class="av" style="--av:${AV_COLORS[i % AV_COLORS.length]};width:${size}px;height:${size}px" aria-hidden="true">${esc(ini)}</span>`;
+}
+const groupAvatar = (size = 40, family = true) => `<span class="av grp${family ? " fam" : ""}" style="width:${size}px;height:${size}px" aria-hidden="true">${ICON.people}</span>`;
+function chatTitle(c) {
+  if (c.is_family) return "Celá rodina";
+  const o = (c.member_ids || []).filter((u) => u !== S.user.id);
+  return o.length ? o.map(firstName).join(", ") : "Iba ja";
+}
+function chatAvatar(c, size = 44) {
+  if (c.is_family) return groupAvatar(size, true);
+  const o = (c.member_ids || []).filter((u) => u !== S.user.id);
+  return o.length === 1 ? avatar(o[0], size) : groupAvatar(size, false);
+}
+const chatTime = (ts) => {
+  const d = new Date(ts), day = iso(d);
+  if (day === today()) return d.toLocaleTimeString("sk-SK", { hour: "2-digit", minute: "2-digit" });
+  if (day === addDays(today(), -1)) return "včera";
+  return d.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" });
+};
+async function loadChats() {
+  const { data, error } = await sb.rpc("my_chats", { p_household: S.hid });
+  if (error) throw error;
+  return data || [];
+}
+async function openChatWith(users) {
+  const { data, error } = await sb.rpc("open_chat", { p_household: S.hid, p_users: users });
+  if (error) return toast(errText(error));
+  location.hash = `#/chat/${data}`;
+}
+
+async function viewChat() {
+  const sub = currentSub();
+  if (sub) return viewConversation(sub);
+  conv = null;
+  const others = S.members.filter((m) => m.user_id !== S.user.id);
+  layout("chat", `
+    <div class="head"><div><h1>Chat</h1><p class="mut">Vyberte, s kým si chcete písať. Súkromnú konverzáciu vidia iba jej účastníci.</p></div></div>
+    <section aria-labelledby="whoH"><h2 id="whoH" style="margin-bottom:10px">S kým?</h2>
+      <div class="people">
+        ${others.map((m) => `<button class="person" data-u="${m.user_id}">${avatar(m.user_id, 54)}<span>${esc(firstName(m.user_id))}</span></button>`).join("")}
+        ${others.length > 1 ? `<button class="person" id="newGroup">${groupAvatar(54, false)}<span>Skupina…</span></button>` : ""}
+        <button class="person" data-fam>${groupAvatar(54, true)}<span>Celá rodina</span></button>
+      </div>
+      ${others.length ? "" : `<p class="mut sm">V rodine zatiaľ nie je nikto ďalší s účtom. Pozvite ich v sekcii <a href="#/rodina">Rodina</a>.</p>`}
+    </section>
+    <section><h2 style="margin-bottom:10px">Konverzácie</h2><div id="chats"><p class="mut">Načítavam…</p></div></section>`);
+  $app.querySelectorAll("[data-u]").forEach((b) => b.addEventListener("click", () => openChatWith([b.dataset.u])));
+  $app.querySelector("[data-fam]").addEventListener("click", () => openChatWith([]));
+  document.getElementById("newGroup")?.addEventListener("click", groupSheet);
+  renderChatList();
+}
+function groupSheet() {
+  const others = S.members.filter((m) => m.user_id !== S.user.id);
+  openSheet("Nová skupina", `<form novalidate><div class="err hidden"></div>
+    <p class="mut sm" style="margin:0 0 6px">Zaškrtnite, kto bude v konverzácii. Ostatní ju neuvidia.</p>
+    ${others.map((m) => `<label class="radio"><input type="checkbox" name="u" value="${m.user_id}"><span>${esc(fullName(m.user_id))}</span></label>`).join("")}
+    <div class="actions"><button class="btn">Otvoriť konverzáciu</button></div></form>`, (el) => {
+    const form = el.querySelector("form"), err = el.querySelector(".err");
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const users = [...form.querySelectorAll('[name="u"]:checked')].map((x) => x.value);
+      if (!users.length) { err.textContent = "Vyberte aspoň jedného člena rodiny."; return err.classList.remove("hidden"); }
+      closeSheet(); openChatWith(users);
+    });
+  });
+}
+async function renderChatList() {
+  const box = document.getElementById("chats"); if (!box) return;
+  let list;
+  try { list = await loadChats(); } catch (e) { box.innerHTML = `<div class="err">${esc(errText(e))}</div>`; return; }
+  if (!document.getElementById("chats")) return;
+  const withMsgs = list.filter((c) => c.last_deleted !== null);
+  if (!withMsgs.length) {
+    box.innerHTML = `<div class="card empty"><b>Zatiaľ žiadne správy</b>Ťuknite hore na člena rodiny a napíšte mu. Príde mu upozornenie.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="list">${withMsgs.map((c) => {
+    const who = c.last_sender === S.user.id ? "Vy: " : !c.is_family && (c.member_ids || []).length <= 2 ? "" : c.last_sender ? `${firstName(c.last_sender)}: ` : "";
+    const prev = c.last_deleted ? "Správa bola zmazaná" : String(c.last_body || "").replace(/\s+/g, " ");
+    return `<a class="row chatrow ${c.unread ? "new" : ""}" href="#/chat/${c.id}">${chatAvatar(c)}
+      <div class="main"><b>${esc(chatTitle(c))}</b><span>${esc(who + prev)}</span></div>
+      <div class="cmeta"><small>${esc(chatTime(c.last_message_at))}</small>${c.unread ? `<i class="badge bad" aria-label="${c.unread} neprečítaných">${c.unread}</i>` : ""}</div></a>`;
+  }).join("")}</div>`;
+}
+
+/* ----- jedna konverzácia ----- */
+let conv = null; // { id, chat, msgs }
+async function viewConversation(id) {
+  layout("chat", `
+    <div class="convhead"><a class="iconbtn back" href="#/chat" aria-label="Späť na konverzácie">${ICON.left}</a>
+      <div class="ct" id="ctitle"><b>Načítavam…</b></div></div>
+    <div id="cmsgs" class="cmsgs" role="log" aria-label="Správy"></div>
+    <form id="csend" class="csend" autocomplete="off">
+      <textarea name="t" rows="1" placeholder="Napíšte správu…" aria-label="Správa" maxlength="4000" enterkeyhint="send"></textarea>
+      <button class="btn send" aria-label="Odoslať">${ICON.send}</button>
+    </form>`);
+  const [c, m, msgs] = await Promise.all([
+    sb.from("chats").select("id,is_family,household_id").eq("id", id).maybeSingle(),
+    sb.from("chat_members").select("user_id").eq("chat_id", id),
+    sb.from("chat_messages").select("*").eq("chat_id", id).order("created_at", { ascending: false }).limit(200),
+  ]);
+  if (c.error || m.error || msgs.error || !c.data || c.data.household_id !== S.hid) {
+    document.getElementById("cmsgs").innerHTML = `<div class="card empty"><b>Konverzácia nie je dostupná</b>Možno patrí inej rodine alebo v nej nie ste.</div>`;
+    document.getElementById("csend").remove();
+    document.getElementById("ctitle").innerHTML = "<b>Chat</b>";
+    return;
+  }
+  const chat = { ...c.data, member_ids: c.data.is_family ? [] : m.data.map((x) => x.user_id) };
+  conv = { id, chat, msgs: msgs.data.reverse() };
+  const count = chat.is_family ? S.members.length : chat.member_ids.length;
+  document.getElementById("ctitle").innerHTML = `${chatAvatar(chat, 36)}<div><b>${esc(chatTitle(chat))}</b><small>${
+    chat.is_family ? `${count} ${plural(count, "člen", "členovia", "členov")} rodiny` : count > 2 ? `skupina · ${count} ${plural(count, "účastník", "účastníci", "účastníkov")}` : "súkromná konverzácia"}</small></div>`;
+  renderConv(true);
+  sb.rpc("mark_chat_read", { p_chat: id }).then(() => {}, () => {});
+
+  const form = document.getElementById("csend"), ta = form.t;
+  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 160) + "px"; };
+  ta.addEventListener("input", grow);
+  const touch = matchMedia("(pointer: coarse)").matches;
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !touch && !e.isComposing) { e.preventDefault(); form.requestSubmit(); } });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = ta.value.trim(); if (!body) return;
+    const btn = form.querySelector(".send"); btn.disabled = true;
+    const { data, error } = await sb.from("chat_messages").insert({ chat_id: id, body }).select().single();
+    btn.disabled = false;
+    if (error) return toast(errText(error));
+    ta.value = ""; grow(); ta.focus();
+    upsertMsg(data); renderConv(true);
+  });
+}
+function upsertMsg(row) {
+  if (!conv || row.chat_id !== conv.id) return;
+  const i = conv.msgs.findIndex((x) => x.id === row.id);
+  if (i >= 0) conv.msgs[i] = row; else conv.msgs.push(row);
+  conv.msgs.sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+function renderConv(toBottom) {
+  const box = document.getElementById("cmsgs"); if (!box || !conv) return;
+  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120;
+  const me = S.user.id, group = conv.chat.is_family || conv.chat.member_ids.length > 2;
+  if (!conv.msgs.length) {
+    box.innerHTML = `<div class="card empty" style="text-align:center"><b>Napíšte prvú správu</b>${conv.chat.is_family ? "Uvidí ju celá rodina." : "Uvidia ju iba účastníci tejto konverzácie."}</div>`;
+    return;
+  }
+  let html = "", lastDay = "", lastSender = "";
+  for (const x of conv.msgs) {
+    const d = new Date(x.created_at), day = iso(d);
+    if (day !== lastDay) {
+      html += `<div class="daysep"><span>${day === today() ? "Dnes" : day === addDays(today(), -1) ? "Včera" : d.toLocaleDateString("sk-SK", { weekday: "long", day: "numeric", month: "numeric" })}</span></div>`;
+      lastDay = day; lastSender = "";
+    }
+    const mine = x.sender_id === me;
+    const time = d.toLocaleTimeString("sk-SK", { hour: "2-digit", minute: "2-digit" });
+    const who = !mine && group && x.sender_id !== lastSender ? `<span class="bwho">${esc(firstName(x.sender_id))}</span>` : "";
+    const text = x.deleted ? `<i>Správa bola zmazaná</i>` : esc(x.body).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    const inner = `${who}<span class="btext">${text}</span><small>${x.edited_at && !x.deleted ? "upravené · " : ""}${time}</small>`;
+    html += mine && !x.deleted
+      ? `<div class="bub me"><button class="bin" data-mid="${x.id}" aria-label="Moja správa ${time} – upraviť alebo zmazať">${inner}</button></div>`
+      : `<div class="bub ${mine ? "me" : ""} ${x.deleted ? "del" : ""}"><div class="bin">${inner}</div></div>`;
+    lastSender = x.sender_id;
+  }
+  box.innerHTML = html;
+  box.querySelectorAll("[data-mid]").forEach((b) => b.addEventListener("click", (e) => { if (!e.target.closest("a")) ownMessageSheet(conv.msgs.find((x) => x.id === b.dataset.mid)); }));
+  if (toBottom || nearBottom) requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+}
+function ownMessageSheet(x) {
+  if (!x) return;
+  openSheet("Moja správa", `<form novalidate><div class="err hidden"></div>
+    <label class="f">Text<textarea name="t" maxlength="4000" style="min-height:110px">${esc(x.body)}</textarea></label>
+    <div class="actions"><button class="btn danger" type="button" id="mDel">Zmazať</button><button class="btn">Uložiť</button></div></form>`, (el) => {
+    const form = el.querySelector("form"), err = el.querySelector(".err");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = form.t.value.trim();
+      if (!body) { err.textContent = "Správa nemôže byť prázdna."; return err.classList.remove("hidden"); }
+      const { data, error } = await sb.from("chat_messages").update({ body }).eq("id", x.id).select().single();
+      if (error) { err.textContent = errText(error); return err.classList.remove("hidden"); }
+      closeSheet(); upsertMsg(data); renderConv(false);
+    });
+    el.querySelector("#mDel").addEventListener("click", async () => {
+      if (!confirm("Zmazať túto správu u všetkých?")) return;
+      const { data, error } = await sb.from("chat_messages").update({ deleted: true }).eq("id", x.id).select().single();
+      if (error) { err.textContent = errText(error); return err.classList.remove("hidden"); }
+      closeSheet(); toast("Správa zmazaná"); upsertMsg(data); renderConv(false);
+    });
+  });
+}
+/* Naživo: zmena v chate (Realtime posiela iba správy konverzácií, v ktorých som – RLS) */
+function onChatChange(p) {
+  const row = p.new; if (!row?.chat_id) return;
+  const v = currentView();
+  if (v === "chat" && conv && currentSub() === row.chat_id) {
+    upsertMsg(row); renderConv(false);
+    if (p.eventType === "INSERT" && row.sender_id !== S.user.id && document.visibilityState === "visible") sb.rpc("mark_chat_read", { p_chat: row.chat_id }).then(() => {}, () => {});
+    return;
+  }
+  if (v === "chat" && !currentSub()) renderChatList();
+  if (p.eventType === "INSERT" && row.sender_id !== S.user.id) {
+    if (v !== "chat") toast(`${firstName(row.sender_id)} vám píše v chate`);
+    if (v === "prehlad" && S.unlocked && !$sheet.innerHTML) fillChatTile();
+  }
+}
+/* stav na dlaždici Chat */
+async function fillChatTile() {
+  const tile = document.querySelector(".tile.k-chat"); if (!tile) return;
+  let list; try { list = await loadChats(); } catch { return; }
+  const n = list.reduce((s, c) => s + (c.unread || 0), 0);
+  const last = list.find((c) => c.last_deleted !== null);
+  const line = tile.querySelector(".tline"), ic = tile.querySelector(".ticon");
+  ic.querySelector(".badge")?.remove();
+  if (n) ic.insertAdjacentHTML("beforeend", `<i class="badge bad">${n}</i>`);
+  line.className = `tline ${n ? "warn" : ""}`;
+  line.textContent = n ? `${n} ${plural(n, "neprečítaná správa", "neprečítané správy", "neprečítaných správ")}`
+    : last ? `${chatTitle(last)} · ${chatTime(last.last_message_at)}` : "Píšte si s rodinou";
 }
 
 /* ================= DOMÁCNOSŤ ================= */
@@ -1858,7 +2089,7 @@ async function loadContext() {
 /* ================= smerovanie ================= */
 const currentView = () => (location.hash.replace(/^#\/?/, "").replace(/\?.*$/, "").split("/")[0] || "prehlad");
 const currentSub = () => location.hash.replace(/^#\/?/, "").split("/")[1] || "";
-const VIEWS = { kurenie: viewKurenie, pripomienky: viewPripomienky, spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
+const VIEWS = { chat: viewChat, kurenie: viewKurenie, pripomienky: viewPripomienky, spravy: viewSpravy, prehlad: viewPrehlad, kalendar: viewKalendar, nakup: viewNakup, domacnost: viewDomacnost, zdravie: viewZdravie, rodina: viewRodina };
 function route() {
   if (!S.user || !S.hid || !S.unlocked) return;
   closeSheet();

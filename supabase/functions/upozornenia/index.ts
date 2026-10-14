@@ -8,6 +8,7 @@
 //   {"msg":id}    + x-cron-secret   → rýchla správa (nová / zmena stavu) – hneď všetkým členom okrem autora zmeny
 //   {"event":"nakup"|"nakup-zmena"|"pripomienka"|"zdravie"|"poznamka", …} + x-cron-secret → nový / zmenený záznam
 //                  – hneď všetkým členom okrem autora (zdravie iba tým, ktorí smú vidieť záznamy osoby)
+//   {"event":"chat","id":správa} + x-cron-secret → nová správa v chate – iba účastníkom konverzácie okrem odosielateľa
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
@@ -431,6 +432,29 @@ async function activity(body: Activity) {
         title: `${name(actor || n.created_by)}: ${NOTE_KIND[n.category] || "Nový záznam"}`,
         body: [n.title, preview.length > 90 ? preview.slice(0, 90) + "…" : preview].filter(Boolean).join(" – "),
         url: "/#/pripomienky", tag: `nova-poznamka-${n.id}`,
+      }),
+    };
+  }
+  if (body.event === "chat" && body.id) {
+    const { data: m } = await db.from("chat_messages").select("*").eq("id", body.id).single();
+    if (!m || m.deleted) return { sent: 0 };
+    const { data: ch } = await db.from("chats").select("*").eq("id", m.chat_id).single();
+    if (!ch) return { sent: 0 };
+    const { ids: hhIds, name } = await membersOf(ch.household_id);
+    let ids = hhIds; // celá rodina
+    if (!ch.is_family) {
+      // súkromná / skupinová konverzácia: iba účastníci, ktorí sú stále členmi rodiny
+      const { data: cm } = await db.from("chat_members").select("user_id").eq("chat_id", ch.id);
+      const part = new Set((cm || []).map((x) => x.user_id as string));
+      ids = hhIds.filter((u) => part.has(u));
+    }
+    const sender = name(m.sender_id);
+    const others = ids.filter((u) => u !== m.sender_id);
+    const title = ch.is_family ? `${sender} · Celá rodina` : others.length > 1 ? `${sender} · skupina (${ids.length})` : sender;
+    const text = String(m.body || "").replace(/\s+/g, " ").trim();
+    return {
+      sent: await sendToOthers(ids, m.sender_id, `chat:${m.id}`, {
+        title, body: text.length > 140 ? text.slice(0, 140) + "…" : text, url: `/#/chat/${ch.id}`, tag: `chat-${ch.id}`,
       }),
     };
   }
